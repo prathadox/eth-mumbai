@@ -1,0 +1,7 @@
+commitment = "0x0804ed80722ab5b5852a9460ca028575ff532e83d54f2b298397a3efabf5fa23"
+nullifier = "0x2bf315d7db1f5d2440153f29b08a0b840abac113911b3808b9009ab790577a9b"
+amount = "10000"
+
+secret = "7"
+nonce = "11"
+actual_amount = "10000"

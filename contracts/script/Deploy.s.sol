@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.21;
 
+// ─── ShieldPay Deploy Script ──────────────────────────────────────────────────
+//
+//   Local Anvil:
+//     anvil --code-size-limit 50000
+//     PRIVATE_KEY=0xac0974... forge script script/Deploy.s.sol \
+//       --rpc-url http://127.0.0.1:8545 --broadcast --disable-code-size-limit
+//
+//   Base Sepolia:
+//     PRIVATE_KEY=0x... forge script script/Deploy.s.sol \
+//       --rpc-url https://sepolia.base.org --broadcast --disable-code-size-limit
+//
+//   NOTE: Use real USDC address on mainnet — skip MockUSDC deployment and pass
+//         the real token address directly to ShieldVault constructor.
+// ─────────────────────────────────────────────────────────────────────────────
+
 import "forge-std/Script.sol";
 import "../src/MockUSDC.sol";
 import "../src/ShieldVault.sol";
-
-// Verifier is already deployed at contracts/src/Verifier.sol by bb.
-// We import the generated artifact directly.
 import "../src/Verifier.sol";
 
 contract Deploy is Script {
@@ -14,11 +26,11 @@ contract Deploy is Script {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(deployerKey);
 
-        // 1. Deploy MockUSDC (local / testnet only — use real USDC on mainnet)
+        // 1. Deploy MockUSDC (testnet only — use real USDC on mainnet)
         MockUSDC usdc = new MockUSDC();
         console.log("MockUSDC deployed:", address(usdc));
 
-        // 2. Deploy the bb-generated UltraHonk verifier
+        // 2. Deploy the bb-generated ZK Honk verifier
         HonkVerifier honkVerifier = new HonkVerifier();
         console.log("HonkVerifier deployed:", address(honkVerifier));
 
@@ -28,7 +40,6 @@ contract Deploy is Script {
 
         vm.stopBroadcast();
 
-        // Print summary
         console.log("\n=== Deployment Summary ===");
         console.log("MockUSDC:     ", address(usdc));
         console.log("HonkVerifier: ", address(honkVerifier));

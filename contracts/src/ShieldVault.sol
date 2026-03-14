@@ -156,28 +156,29 @@ contract ShieldVault {
         bytes   calldata proof,
         bytes32          merkleRoot,
         bytes32          nullifierHash,
-        address          stealthAddress,
+        bytes32          stealthFieldElement,
         uint256          amount
     ) external {
         require(knownRoots[merkleRoot], "Unknown Merkle root");
         require(!nullifierSpent[nullifierHash], "Already claimed");
-        require(stealthAddress != address(0), "Zero address");
+        require(stealthFieldElement != 0, "Zero stealth");
 
-        // Public inputs: [merkle_root, nullifier_hash, stealth_address, amount]
+        // Public inputs order must match circuit: [merkle_root, nullifier_hash, stealth_address, amount]
         bytes32[] memory pub = new bytes32[](4);
         pub[0] = merkleRoot;
         pub[1] = nullifierHash;
-        pub[2] = bytes32(uint256(uint160(stealthAddress)));
+        pub[2] = stealthFieldElement;
         pub[3] = bytes32(amount);
 
         require(verifier.verify(proof, pub), "Invalid ZK proof");
 
         nullifierSpent[nullifierHash] = true;
 
-        // Transfer USDC to stealth address
-        require(usdc.transfer(stealthAddress, amount * 1e6), "USDC transfer failed");
+        // Truncate field element to 20-byte Ethereum address for transfer
+        address stealthAddr = address(uint160(uint256(stealthFieldElement)));
+        require(usdc.transfer(stealthAddr, amount * 1e6), "USDC transfer failed");
 
-        emit WithdrawalToStealth(nullifierHash, stealthAddress, amount);
+        emit WithdrawalToStealth(nullifierHash, stealthAddr, amount);
     }
 
     // ========================================================================

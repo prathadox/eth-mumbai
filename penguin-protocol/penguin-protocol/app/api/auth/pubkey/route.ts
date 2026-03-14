@@ -11,11 +11,13 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const pubKey = ethers.SigningKey.recoverPublicKey(
-      ethers.hashMessage(message),
-      signature
-    );
-    return NextResponse.json({ pubKey });
+    // Derive a deterministic key pair from the signature's r value.
+    // r is a valid secp256k1 scalar — use it as the private key for ECIES.
+    // This way the user never exposes their actual wallet private key.
+    const sig = ethers.Signature.from(signature);
+    const derivedPrivKey = sig.r; // 0x + 64 hex chars (32 bytes)
+    const pubKey = new ethers.SigningKey(derivedPrivKey).publicKey;
+    return NextResponse.json({ pubKey, derivedPrivKey });
   } catch (e: unknown) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

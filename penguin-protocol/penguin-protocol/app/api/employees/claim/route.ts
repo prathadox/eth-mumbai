@@ -24,13 +24,13 @@ export async function POST(req: NextRequest) {
   if ((employee.wallet_address as string).toLowerCase() !== walletAddress.toLowerCase()) {
     return NextResponse.json({ error: "ENS name not assigned to this wallet" }, { status: 403 });
   }
-  if (employee.status === "active") {
-    return NextResponse.json({ error: "Already active" }, { status: 400 });
-  }
+  // Allow re-registration to update pubkey (e.g. after key scheme change)
+  // Preserve "active" status if already active
+  const newStatus = employee.status === "active" ? "active" : "claimed";
 
   const { data: updated, error } = await db
     .from("employees")
-    .update({ status: "claimed", public_key: pubKey })
+    .update({ status: newStatus, public_key: pubKey })
     .eq("id", employee.id)
     .select()
     .single();

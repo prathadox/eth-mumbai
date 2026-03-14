@@ -27,8 +27,20 @@ export function getAuthAddress(request: Request): string | null {
 
 export async function generateNonce(address: string): Promise<string> {
   const db = supabaseAdmin();
+
+  // Return existing nonce if still valid — prevents overwrite races when called multiple times
+  const { data: existing } = await db
+    .from("auth_nonces")
+    .select("nonce, expires_at")
+    .eq("address", address.toLowerCase())
+    .single();
+
+  if (existing && new Date(existing.expires_at) > new Date()) {
+    return existing.nonce;
+  }
+
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
   const { error } = await db
     .from("auth_nonces")

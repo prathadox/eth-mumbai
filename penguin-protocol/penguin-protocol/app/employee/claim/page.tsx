@@ -42,7 +42,8 @@ export default function EmployeeClaim() {
     fetch(`/api/employees/verify-ens?address=${encodeURIComponent(address)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (data.valid && (data.status === "claimed" || data.status === "active")) {
+        // Only auto-redirect if fully active — otherwise let them re-register key
+        if (data.valid && data.status === "active") {
           router.push("/employee/contracts");
         }
       });
@@ -79,7 +80,7 @@ export default function EmployeeClaim() {
       if (data.valid) {
         setEnsName(data.ensName);
         setEnsVerified({ valid: true, status: data.status });
-        if (data.status === "claimed" || data.status === "active") {
+        if (data.status === "active") {
           router.push("/employee/contracts");
         }
       } else {
@@ -98,8 +99,8 @@ export default function EmployeeClaim() {
     setError(null);
 
     try {
-      const nonce = Math.floor(Math.random() * 1e9).toString();
-      const sigMsg = `Penguin Protocol: register public key ${nonce}`;
+      // Fixed deterministic message — same signature r every time → same derived key pair
+      const sigMsg = "Penguin Protocol: decrypt key v1";
       const signature = await signMessageAsync({ message: sigMsg });
 
       const pubRes = await fetch("/api/auth/pubkey", {

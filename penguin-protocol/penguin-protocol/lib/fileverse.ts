@@ -50,11 +50,19 @@ ${JSON.stringify(encryptedContract, null, 2)}
 
 export async function getEncryptedContract(fileId: string): Promise<EncryptedContract> {
   const agent = await getAgent();
-  // getFile expects the BigInt fileId from the contract
-  const fileData = await agent.getFile(BigInt(fileId));
+  // getFile returns { portal, namespace, metadataIpfsHash, contentIpfsHash }
+  const fileData = await agent.getFile(BigInt(fileId)) as {
+    contentIpfsHash: string;
+  };
 
-  // Extract JSON block from markdown
-  const match = (fileData as string).match(/```json\n([\s\S]+?)\n```/);
+  // contentIpfsHash is "ipfs://Qm..." — fetch actual content from gateway
+  const ipfsHash = fileData.contentIpfsHash.replace("ipfs://", "");
+  const gateway = process.env.PINATA_GATEWAY!.replace(/\/$/, "");
+  const res = await fetch(`${gateway}/ipfs/${ipfsHash}`);
+  if (!res.ok) throw new Error(`Failed to fetch from IPFS: ${res.status}`);
+  const text = await res.text();
+
+  const match = text.match(/```json\n([\s\S]+?)\n```/);
   if (!match) throw new Error("Could not parse encrypted contract from Fileverse file");
 
   return JSON.parse(match[1]) as EncryptedContract;

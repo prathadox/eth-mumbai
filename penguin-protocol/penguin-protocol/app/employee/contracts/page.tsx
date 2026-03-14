@@ -3,8 +3,9 @@
 export const dynamic = "force-dynamic";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount } from "wagmi";
+import { useAccount, useSignMessage } from "wagmi";
 import { useEffect, useState } from "react";
+import { ethers } from "ethers";
 import { useSiweAuth } from "@/lib/useSiweAuth";
 import { useRouter } from "next/navigation";
 import { decryptContractBrowser } from "@/lib/encryption.client";
@@ -29,13 +30,15 @@ export default function EmployeeContracts() {
   const router = useRouter();
   const { address } = useAccount();
   const { isSignedIn, signIn, authFetch } = useSiweAuth();
+  const { signMessageAsync } = useSignMessage();
 
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [decrypted, setDecrypted] = useState<Record<string, ContractPayload>>({});
-  const [decryptKey, setDecryptKey] = useState("");
+  const [decryptPrivKey, setDecryptPrivKey] = useState<string | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   const [decrypting, setDecrypting] = useState<string | null>(null);
   const [decryptError, setDecryptError] = useState<string | null>(null);
 
@@ -68,8 +71,23 @@ export default function EmployeeContracts() {
     }
   }
 
+  async function unlockWithWallet() {
+    setUnlocking(true);
+    setDecryptError(null);
+    try {
+      // Same deterministic message used during registration — same r every time
+      const sig = await signMessageAsync({ message: "Penguin Protocol: decrypt key v1" });
+      const { r } = ethers.Signature.from(sig);
+      setDecryptPrivKey(r);
+    } catch (e: unknown) {
+      setDecryptError((e as Error).message);
+    } finally {
+      setUnlocking(false);
+    }
+  }
+
   async function handleDecrypt(contract: ContractRecord) {
-    if (!decryptKey) return;
+    if (!decryptPrivKey) return;
     setDecrypting(contract.fileverse_file_id);
     setDecryptError(null);
     try {
@@ -78,7 +96,7 @@ export default function EmployeeContracts() {
       );
       if (!res.ok) throw new Error((await res.json()).error);
       const encrypted = (await res.json()) as EncryptedContract;
-      const payload = await decryptContractBrowser(encrypted, decryptKey) as ContractPayload;
+      const payload = await decryptContractBrowser(encrypted, decryptPrivKey!) as ContractPayload;
       setDecrypted((prev) => ({ ...prev, [contract.fileverse_file_id]: payload }));
     } catch (e: unknown) {
       setDecryptError((e as Error).message);
@@ -146,18 +164,25 @@ export default function EmployeeContracts() {
         <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-4">
           <div>
             <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">01</p>
-            <p className="text-[15px] font-medium text-white">Local Decryption</p>
+            <p className="text-[15px] font-medium text-white">Unlock Decryption</p>
             <p className="text-[13px] text-gray-500 mt-1">
-              Decryption happens entirely in your browser. Your key never leaves this tab.
+              Sign a message with your wallet to unlock contract decryption. No private key needed.
             </p>
           </div>
-          <input
-            type="password"
-            value={decryptKey}
-            onChange={(e) => setDecryptKey(e.target.value)}
-            placeholder="0x..."
-            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[14px] font-mono text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
-          />
+          {decryptPrivKey ? (
+            <div className="flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.8)]" />
+              <p className="text-[13px] text-gray-400">Decryption unlocked — click Decrypt on any contract</p>
+            </div>
+          ) : (
+            <button
+              onClick={unlockWithWallet}
+              disabled={unlocking}
+              className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+            >
+              {unlocking ? "Sign in wallet…" : "Unlock with wallet"}
+            </button>
+          )}
         </div>
 
         {(error || decryptError) && (
@@ -217,7 +242,7 @@ export default function EmployeeContracts() {
                         ) : (
                           <button
                             onClick={() => handleDecrypt(c)}
-                            disabled={!decryptKey || decrypting === c.fileverse_file_id}
+                            disabled={!decryptPrivKey || decrypting === c.fileverse_file_id}
                             className="py-1.5 px-3 rounded-lg border border-white/[0.08] text-[12px] text-white hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
                           >
                             {decrypting === c.fileverse_file_id ? "…" : "Decrypt"}

@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     .eq("id", contract.employee_id)
     .single();
 
-  if (!emp || (emp.wallet_address as string).toLowerCase() !== walletAddress.toLowerCase()) {
+  if (!emp || emp.wallet_address.toLowerCase() !== walletAddress.toLowerCase()) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

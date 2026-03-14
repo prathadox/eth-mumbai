@@ -30,7 +30,7 @@ contract ShieldVaultTest is Test {
     // Values from circuits/Prover.toml — fixed for this proof
     bytes32 constant PROOF_MERKLE_ROOT    = 0x1aa72582ab7693c6a5bdcf66dba56a536c92fd4d8199db4e096d751a540c872a;
     bytes32 constant PROOF_NULLIFIER_HASH = 0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5;
-    address constant PROOF_RECIPIENT      = 0x1234567890AbcdEF1234567890aBcdef12345678;
+    address constant PROOF_STEALTH_ADDR   = 0x1234567890AbcdEF1234567890aBcdef12345678;
     uint256 constant PROOF_AMOUNT         = 10000; // whole USDC units
 
     // commitment = h([actual_amount, employer_nonce, claim_pubkey, 0])
@@ -136,19 +136,17 @@ contract ShieldVaultTest is Test {
         usdc.mint(address(this), 10000 * 1e6);
         usdc.approve(address(vault), 10000 * 1e6);
 
-        bytes32[] memory commitments    = new bytes32[](1);
-        uint256[] memory amounts        = new uint256[](1);
-        bytes[]   memory encryptedNotes = new bytes[](1);
+        bytes32[] memory commitments = new bytes32[](1);
+        uint256[] memory amounts     = new uint256[](1);
 
-        commitments[0]    = COMMITMENT;
-        amounts[0]        = 10000;
-        encryptedNotes[0] = hex"deadbeef";
+        commitments[0] = COMMITMENT;
+        amounts[0]     = 10000;
 
-        vault.depositBatch(commitments, amounts, encryptedNotes);
+        vault.depositBatch(commitments, amounts);
 
         bytes32 newRoot = vault.currentRoot();
         assertNotEq(newRoot, initialRoot, "Root should change after deposit");
-        assertTrue(vault.isKnownRoot(newRoot), "New root should be stored");
+        assertTrue(vault.isKnownRoot(newRoot), "New root should be known");
         assertEq(vault.nextIndex(), 1, "Leaf index should be 1");
     }
 
@@ -158,13 +156,12 @@ contract ShieldVaultTest is Test {
         usdc.mint(address(this), 10000 * 1e6);
         usdc.approve(address(vault), 10000 * 1e6);
 
-        bytes32[] memory commitments    = new bytes32[](1);
-        uint256[] memory amounts        = new uint256[](1);
-        bytes[]   memory encryptedNotes = new bytes[](1);
+        bytes32[] memory commitments = new bytes32[](1);
+        uint256[] memory amounts     = new uint256[](1);
         commitments[0] = COMMITMENT;
         amounts[0]     = 10000;
 
-        vault.depositBatch(commitments, amounts, encryptedNotes);
+        vault.depositBatch(commitments, amounts);
 
         assertEq(usdc.balanceOf(address(vault)), 10000 * 1e6);
         assertEq(usdc.balanceOf(address(this)), 0);
@@ -175,42 +172,41 @@ contract ShieldVaultTest is Test {
 
         bytes32[] memory commitments = new bytes32[](1);
         uint256[] memory amounts     = new uint256[](2); // wrong length
-        bytes[]   memory notes       = new bytes[](1);
 
         usdc.mint(address(this), 1e6);
         usdc.approve(address(vault), 1e6);
 
         vm.expectRevert("Length mismatch");
-        vault.depositBatch(commitments, amounts, notes);
+        vault.depositBatch(commitments, amounts);
     }
 
-    // ─── withdraw with mock verifier ─────────────────────────────────────────
+    // ─── withdrawToStealth with mock verifier ─────────────────────────────────
 
-    function testWithdrawWithAlwaysValidVerifier() public {
+    function testWithdrawToStealthWithAlwaysValidVerifier() public {
         _deployWithMockVerifier(address(new AlwaysValidVerifier()));
         _forceKnownRoot(PROOF_MERKLE_ROOT);
         _fundVault(PROOF_AMOUNT * 1e6);
 
-        uint256 balanceBefore = usdc.balanceOf(PROOF_RECIPIENT);
+        uint256 balanceBefore = usdc.balanceOf(PROOF_STEALTH_ADDR);
 
-        vault.withdraw(
+        vault.withdrawToStealth(
             hex"aabbcc",            // dummy proof — verifier always returns true
             PROOF_MERKLE_ROOT,
             PROOF_NULLIFIER_HASH,
-            PROOF_RECIPIENT,
+            PROOF_STEALTH_ADDR,
             PROOF_AMOUNT
         );
 
-        assertEq(usdc.balanceOf(PROOF_RECIPIENT), balanceBefore + PROOF_AMOUNT * 1e6);
+        assertEq(usdc.balanceOf(PROOF_STEALTH_ADDR), balanceBefore + PROOF_AMOUNT * 1e6);
         assertTrue(vault.isNullifierSpent(PROOF_NULLIFIER_HASH));
     }
 
-    function testWithdrawMarkNullifierSpent() public {
+    function testWithdrawToStealthMarkNullifierSpent() public {
         _deployWithMockVerifier(address(new AlwaysValidVerifier()));
         _forceKnownRoot(PROOF_MERKLE_ROOT);
         _fundVault(PROOF_AMOUNT * 1e6);
 
-        vault.withdraw(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_RECIPIENT, PROOF_AMOUNT);
+        vault.withdrawToStealth(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_STEALTH_ADDR, PROOF_AMOUNT);
         assertTrue(vault.isNullifierSpent(PROOF_NULLIFIER_HASH));
     }
 
@@ -221,10 +217,10 @@ contract ShieldVaultTest is Test {
         _forceKnownRoot(PROOF_MERKLE_ROOT);
         _fundVault(PROOF_AMOUNT * 2 * 1e6);
 
-        vault.withdraw(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_RECIPIENT, PROOF_AMOUNT);
+        vault.withdrawToStealth(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_STEALTH_ADDR, PROOF_AMOUNT);
 
         vm.expectRevert("Already claimed");
-        vault.withdraw(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_RECIPIENT, PROOF_AMOUNT);
+        vault.withdrawToStealth(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_STEALTH_ADDR, PROOF_AMOUNT);
     }
 
     // ─── Unknown root guard ───────────────────────────────────────────────────
@@ -235,7 +231,7 @@ contract ShieldVaultTest is Test {
 
         // Don't call _forceKnownRoot — root is NOT in knownRoots
         vm.expectRevert("Unknown Merkle root");
-        vault.withdraw(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_RECIPIENT, PROOF_AMOUNT);
+        vault.withdrawToStealth(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_STEALTH_ADDR, PROOF_AMOUNT);
     }
 
     // ─── Invalid proof guard ──────────────────────────────────────────────────
@@ -246,7 +242,7 @@ contract ShieldVaultTest is Test {
         _fundVault(PROOF_AMOUNT * 1e6);
 
         vm.expectRevert("Invalid ZK proof");
-        vault.withdraw(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_RECIPIENT, PROOF_AMOUNT);
+        vault.withdrawToStealth(hex"aabb", PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_STEALTH_ADDR, PROOF_AMOUNT);
     }
 
     // ─── Real UltraHonk verifier + real proof ─────────────────────────────────
@@ -273,7 +269,7 @@ contract ShieldVaultTest is Test {
         bytes32[] memory pub = new bytes32[](4);
         pub[0] = PROOF_MERKLE_ROOT;
         pub[1] = PROOF_NULLIFIER_HASH;
-        pub[2] = bytes32(uint256(uint160(PROOF_RECIPIENT)));
+        pub[2] = bytes32(uint256(uint160(PROOF_STEALTH_ADDR)));
         pub[3] = bytes32(PROOF_AMOUNT);
 
         // Verify directly against the HonkVerifier
@@ -290,9 +286,9 @@ contract ShieldVaultTest is Test {
 
         bytes memory proof = _loadProof();
 
-        vault.withdraw(proof, PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_RECIPIENT, PROOF_AMOUNT);
+        vault.withdrawToStealth(proof, PROOF_MERKLE_ROOT, PROOF_NULLIFIER_HASH, PROOF_STEALTH_ADDR, PROOF_AMOUNT);
 
-        assertEq(usdc.balanceOf(PROOF_RECIPIENT), PROOF_AMOUNT * 1e6, "USDC not received");
+        assertEq(usdc.balanceOf(PROOF_STEALTH_ADDR), PROOF_AMOUNT * 1e6, "USDC not received");
         assertTrue(vault.isNullifierSpent(PROOF_NULLIFIER_HASH), "Nullifier not marked");
     }
 

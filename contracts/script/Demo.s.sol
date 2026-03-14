@@ -68,36 +68,32 @@ contract Demo is Script {
     }
 
     function _companyDeposit() internal {
-        uint256 total = (ALICE_AMOUNT + 8000 + 12000) * 1e6;
+        uint256 total = (ALICE_AMOUNT + 8000 + 12000);
 
         vm.startBroadcast(COMPANY_KEY);
-        usdc.mint(COMPANY, total);
-        usdc.approve(address(vault), total);
+        usdc.mint(COMPANY, total * 1e6);
+        usdc.approve(address(vault), total * 1e6);
         vm.stopBroadcast();
 
         // Compute Bob & Carol commitments (off-chain in production)
         bytes32 bobCommitment   = _computeCommitment(8000,  0xabcdef1234, MiMC.hash4(42, 0, 0, 0));
         bytes32 carolCommitment = _computeCommitment(12000, 0x9999999999, MiMC.hash4(99, 0, 0, 0));
 
-        bytes32[] memory commitments    = new bytes32[](3);
-        uint256[] memory amounts        = new uint256[](3);
-        bytes[]   memory encryptedNotes = new bytes[](3);
+        bytes32[] memory commitments = new bytes32[](3);
+        uint256[] memory amounts     = new uint256[](3);
 
-        commitments[0]    = ALICE_COMMITMENT;  amounts[0] = ALICE_AMOUNT;
-        commitments[1]    = bobCommitment;     amounts[1] = 8000;
-        commitments[2]    = carolCommitment;   amounts[2] = 12000;
-        encryptedNotes[0] = hex"a1"; // placeholder — real: ECDH cipher
-        encryptedNotes[1] = hex"b0";
-        encryptedNotes[2] = hex"c0";
+        commitments[0] = ALICE_COMMITMENT; amounts[0] = ALICE_AMOUNT;
+        commitments[1] = bobCommitment;    amounts[1] = 8000;
+        commitments[2] = carolCommitment;  amounts[2] = 12000;
 
         vm.startBroadcast(COMPANY_KEY);
-        vault.depositBatch(commitments, amounts, encryptedNotes);
+        vault.depositBatch(commitments, amounts);
         vm.stopBroadcast();
 
         console.log("\n[Company] Deposited 3 notes");
-        console.log("[Vault]  Leaves :", vault.nextIndex());
+        console.log("[Vault]  Leaves:", vault.nextIndex());
         console.log("[Vault]  Balance:", usdc.balanceOf(address(vault)) / 1e6, "USDC");
-        console.log("[Vault]  Root   :", uint256(vault.currentRoot()));
+        console.log("[Vault]  Root:", uint256(vault.currentRoot()));
     }
 
     function _aliceWithdraw() internal {
@@ -111,13 +107,13 @@ contract Demo is Script {
         bytes memory proof = vm.readFileBinary("../circuits/target/alice_proof/proof");
 
         console.log("\n[Alice] Proof size:", proof.length, "bytes");
-        console.log("[Alice] Claiming  :", ALICE_AMOUNT, "USDC");
+        console.log("[Alice] Claiming:", ALICE_AMOUNT, "USDC");
 
         vm.startBroadcast(COMPANY_KEY); // relayer submits tx
-        vault.withdraw(proof, ALICE_PROOF_ROOT, ALICE_NULLIFIER, ALICE_RECIPIENT, ALICE_AMOUNT);
+        vault.withdrawToStealth(proof, ALICE_PROOF_ROOT, ALICE_NULLIFIER, ALICE_RECIPIENT, ALICE_AMOUNT);
         vm.stopBroadcast();
 
-        console.log("[Alice] Received  :", usdc.balanceOf(ALICE_RECIPIENT) / 1e6, "USDC");
+        console.log("[Alice] Received:", usdc.balanceOf(ALICE_RECIPIENT) / 1e6, "USDC");
     }
 
     function _doubleSpendCheck() internal {
@@ -126,7 +122,7 @@ contract Demo is Script {
         // Use vm.prank (no broadcast) so the revert is caught locally without
         // producing a failed on-chain tx.
         vm.prank(COMPANY);
-        try vault.withdraw(proof, ALICE_PROOF_ROOT, ALICE_NULLIFIER, ALICE_RECIPIENT, ALICE_AMOUNT) {
+        try vault.withdrawToStealth(proof, ALICE_PROOF_ROOT, ALICE_NULLIFIER, ALICE_RECIPIENT, ALICE_AMOUNT) {
             console.log("\n[ERROR] Double-spend should have reverted!");
         } catch Error(string memory reason) {
             console.log("\n[OK] Double-spend reverted:", reason);
@@ -135,8 +131,8 @@ contract Demo is Script {
 
     function _printFinalState() internal view {
         console.log("\n=== Final State ===");
-        console.log("Alice balance :", usdc.balanceOf(ALICE_RECIPIENT) / 1e6, "USDC");
-        console.log("Vault balance :", usdc.balanceOf(address(vault)) / 1e6, "USDC");
+        console.log("Alice balance:", usdc.balanceOf(ALICE_RECIPIENT) / 1e6, "USDC");
+        console.log("Vault balance:", usdc.balanceOf(address(vault)) / 1e6, "USDC");
         console.log("Nullifier used:", vault.isNullifierSpent(ALICE_NULLIFIER));
     }
 

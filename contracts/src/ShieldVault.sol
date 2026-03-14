@@ -2,15 +2,16 @@
 pragma solidity ^0.8.21;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./Verifier.sol"; // pulls in IVerifier declared by the bb-generated file
+import "./Verifier.sol";
 
-// ─── MiMC hash library ───────────────────────────────────────────────────────
-//
+// ============================================================================
+// MiMC Hash Library
 // Mirrors the circuit's h() function in main.nr exactly.
 // Constants and prime must be byte-for-byte identical to the Noir globals.
+// ============================================================================
 
 library MiMC {
-    // BN254 scalar field prime (named BN254_P to avoid shadowing Verifier.sol's P)
+    // BN254 scalar field prime
     uint256 constant BN254_P =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
 
@@ -25,7 +26,7 @@ library MiMC {
         return mulmod(t2, t, BN254_P);
     }
 
-    // hash(inputs[4]) — mirrors h([a,b,c,d]) in Noir
+    // hash(inputs[4]) - mirrors h([a,b,c,d]) in Noir
     function hash4(uint256 a, uint256 b, uint256 c, uint256 d) internal pure returns (uint256) {
         uint256[4] memory ins = [a, b, c, d];
         uint256 state = 0;
@@ -44,7 +45,9 @@ library MiMC {
     }
 }
 
-// ─── ShieldVault ─────────────────────────────────────────────────────────────
+// ============================================================================
+// ShieldVault - Stealth Address Payroll Contract
+// ============================================================================
 
 contract ShieldVault {
     using MiMC for uint256;
@@ -58,38 +61,41 @@ contract ShieldVault {
     uint256 public nextIndex;
     bytes32 public currentRoot;
 
-    // Pre-computed zero subtree roots at each level (using MiMC, not keccak)
+    // Pre-computed zero subtree roots at each level
     bytes32[TREE_DEPTH] public zeros;
-    // Last left-subtree root seen at each level (for incremental Merkle insert)
+    // Last left-subtree root seen at each level
     bytes32[TREE_DEPTH] public lastSubtrees;
 
-    // All Merkle roots ever produced are valid (allows claiming after more deposits)
+    // All Merkle roots ever produced are valid
     mapping(bytes32 => bool) public knownRoots;
-    // Spent nullifiers — prevents double-claiming
+    // Spent nullifiers - prevents double-claiming
     mapping(bytes32 => bool) public nullifierSpent;
+    // Track commitments for debugging
+    mapping(bytes32 => bool) public commitmentExists;
 
     event NoteCreated(
         bytes32 indexed commitment,
         uint256 leafIndex,
-        bytes32 newRoot,
-        bytes encryptedNote
+        bytes32 newRoot
     );
-    event Withdrawal(
+
+    event WithdrawalToStealth(
         bytes32 indexed nullifierHash,
-        address indexed recipient,
+        address indexed stealthAddress,
         uint256 amount
     );
 
-    // ─── Constructor ─────────────────────────────────────────────────────────
+    // ========================================================================
+    // Constructor
+    // ========================================================================
 
     constructor(address _usdc, address _verifier) {
         usdc     = IERC20(_usdc);
         verifier = IVerifier(_verifier);
         owner    = msg.sender;
 
-        // Build zero-subtree values bottom-up using MiMC so they match the
-        // circuit's merkle_root_of() which also uses h([left, right, 0, 0]).
-        zeros[0] = bytes32(0); // empty leaf
+        // Build zero-subtree values bottom-up using MiMC
+        zeros[0] = bytes32(0);
         for (uint256 i = 1; i < TREE_DEPTH; i++) {
             uint256 z = uint256(zeros[i - 1]);
             zeros[i] = bytes32(MiMC.hash2(z, z));
@@ -99,37 +105,30 @@ contract ShieldVault {
         knownRoots[currentRoot] = true;
     }
 
-    // ─── Owner helpers ────────────────────────────────────────────────────────
+    // ========================================================================
+    // Owner helpers
+    // ========================================================================
 
-    // Manually mark a root as known — used for demo/migration when proofs are
-    // generated against an off-chain-computed root before the corresponding
-    // depositBatch has been mined (e.g. Prover.toml all-zero siblings).
     function addKnownRoot(bytes32 root) external {
         require(msg.sender == owner, "Not owner");
         knownRoots[root] = true;
     }
 
-    // ─── Employer deposit ─────────────────────────────────────────────────────
-    //
-    // Called once per payroll run by the company wallet (via BitGo multi-sig).
-    // commitments[i] = MiMC(amount, nonce, claim_pubkey) — computed off-chain.
-    // amounts[i]     = whole USDC units (1 USDC = 1e6 micro-USDC).
-    // encryptedNotes[i] = ECDH-encrypted {amount, nonce} blob for the employee.
+    // ========================================================================
+    // Employer deposit - creates commitments in Merkle tree
+    // ========================================================================
 
     function depositBatch(
         bytes32[] calldata commitments,
-        uint256[] calldata amounts,
-        bytes[]   calldata encryptedNotes
+        uint256[] calldata amounts
     ) external {
-        require(
-            commitments.length == amounts.length &&
-            amounts.length == encryptedNotes.length,
-            "Length mismatch"
-        );
+        require(commitments.length == amounts.length, "Length mismatch");
         require(nextIndex + commitments.length <= 2 ** TREE_DEPTH, "Tree full");
 
         uint256 total = 0;
-        for (uint256 i = 0; i < amounts.length; i++) total += amounts[i];
+        for (uint256 i = 0; i < amounts.length; i++) {
+            total += amounts[i];
+        }
 
         require(
             usdc.transferFrom(msg.sender, address(this), total * 1e6),
@@ -139,50 +138,72 @@ contract ShieldVault {
         for (uint256 i = 0; i < commitments.length; i++) {
             (uint256 idx, bytes32 newRoot) = _insertLeaf(commitments[i]);
             knownRoots[newRoot] = true;
-            emit NoteCreated(commitments[i], idx, newRoot, encryptedNotes[i]);
+            commitmentExists[commitments[i]] = true;
+            emit NoteCreated(commitments[i], idx, newRoot);
         }
     }
 
-    // ─── Employee claim ───────────────────────────────────────────────────────
-    //
-    // Called by Alice from her browser (or via ERC-4337 relayer).
-    // proof         = bb UltraHonk proof bytes.
-    // merkleRoot    = root Alice's proof was generated against.
-    // nullifierHash = MiMC(claim_secret, leaf_index) — one-time spend token.
-    // recipient     = address to receive USDC.
-    // amount        = whole USDC units (must match what's in the ZK proof).
+    // ========================================================================
+    // Employee claim - withdraw to stealth address with ZK proof
+    // ========================================================================
+    // Public inputs order (must match circuit):
+    //   [0] merkle_root
+    //   [1] nullifier_hash
+    //   [2] stealth_address
+    //   [3] amount
 
-    function withdraw(
+    function withdrawToStealth(
         bytes   calldata proof,
         bytes32          merkleRoot,
         bytes32          nullifierHash,
-        address          recipient,
+        address          stealthAddress,
         uint256          amount
     ) external {
-        require(knownRoots[merkleRoot],         "Unknown Merkle root");
-        require(!nullifierSpent[nullifierHash],  "Already claimed");
-        require(recipient != address(0),         "Zero recipient");
+        require(knownRoots[merkleRoot], "Unknown Merkle root");
+        require(!nullifierSpent[nullifierHash], "Already claimed");
+        require(stealthAddress != address(0), "Zero address");
 
-        // Public inputs must match the order in circuits/src/main.nr:
-        //   merkle_root, nullifier_hash, recipient, amount
+        // Public inputs: [merkle_root, nullifier_hash, stealth_address, amount]
         bytes32[] memory pub = new bytes32[](4);
         pub[0] = merkleRoot;
         pub[1] = nullifierHash;
-        pub[2] = bytes32(uint256(uint160(recipient)));
+        pub[2] = bytes32(uint256(uint160(stealthAddress)));
         pub[3] = bytes32(amount);
 
         require(verifier.verify(proof, pub), "Invalid ZK proof");
 
         nullifierSpent[nullifierHash] = true;
-        require(usdc.transfer(recipient, amount * 1e6), "USDC transfer failed");
 
-        emit Withdrawal(nullifierHash, recipient, amount);
+        // Transfer USDC to stealth address
+        require(usdc.transfer(stealthAddress, amount * 1e6), "USDC transfer failed");
+
+        emit WithdrawalToStealth(nullifierHash, stealthAddress, amount);
     }
 
-    // ─── Incremental Merkle insert ────────────────────────────────────────────
-    //
-    // Standard incremental Merkle tree using MiMC instead of keccak256 so the
-    // computed root matches what the ZK circuit reconstructs from the proof path.
+    // ========================================================================
+    // Consolidate - sweep funds from stealth addresses to main wallet
+    // ========================================================================
+
+    function consolidateFromStealth(
+        address[] calldata stealthAddresses,
+        address         recipient
+    ) external {
+        require(recipient != address(0), "Zero recipient");
+
+        for (uint256 i = 0; i < stealthAddresses.length; i++) {
+            address stealth = stealthAddresses[i];
+            uint256 balance = usdc.balanceOf(stealth);
+            if (balance > 0) {
+                // Transfer from stealth to recipient
+                // Caller must have approval from stealth addresses
+                usdc.transferFrom(stealth, recipient, balance);
+            }
+        }
+    }
+
+    // ========================================================================
+    // Internal: Incremental Merkle insert
+    // ========================================================================
 
     function _insertLeaf(bytes32 leaf)
         internal
@@ -194,11 +215,11 @@ contract ShieldVault {
 
         for (uint256 level = 0; level < TREE_DEPTH; level++) {
             if (pos % 2 == 0) {
-                // current is a left child — save it, pair with zero on the right
+                // current is a left child - save it, pair with zero on the right
                 lastSubtrees[level] = bytes32(current);
                 current = MiMC.hash2(current, uint256(zeros[level]));
             } else {
-                // current is a right child — pair with the saved left sibling
+                // current is a right child - pair with the saved left sibling
                 current = MiMC.hash2(uint256(lastSubtrees[level]), current);
             }
             pos >>= 1;
@@ -208,7 +229,9 @@ contract ShieldVault {
         newRoot     = bytes32(current);
     }
 
-    // ─── Views ────────────────────────────────────────────────────────────────
+    // ========================================================================
+    // Views
+    // ========================================================================
 
     function isKnownRoot(bytes32 root) external view returns (bool) {
         return knownRoots[root];
@@ -220,5 +243,9 @@ contract ShieldVault {
 
     function treeCapacity() external pure returns (uint256) {
         return 2 ** TREE_DEPTH;
+    }
+
+    function getNextIndex() external view returns (uint256) {
+        return nextIndex;
     }
 }

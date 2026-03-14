@@ -58,6 +58,7 @@ export async function getEncryptedContract(fileId: string): Promise<EncryptedCon
   // contentIpfsHash is "ipfs://Qm..." — fetch actual content from gateway
   const ipfsHash = fileData.contentIpfsHash.replace("ipfs://", "");
   const gateway = process.env.PINATA_GATEWAY!.replace(/\/$/, "");
+  console.log("[fileverse] fetching IPFS content:", `${gateway}/ipfs/${ipfsHash}`);
   const res = await fetch(`${gateway}/ipfs/${ipfsHash}`);
   if (!res.ok) throw new Error(`Failed to fetch from IPFS: ${res.status}`);
   const text = await res.text();

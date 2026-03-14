@@ -32,5 +32,6 @@ export async function GET(req: NextRequest) {
   }
 
   const encrypted = await getEncryptedContract(fileId);
+  console.log("[contracts/file] fetched fileId:", fileId, "keys:", Object.keys(encrypted));
   return NextResponse.json(encrypted);
 }

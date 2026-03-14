@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthAddress } from "@/lib/auth";
 import { encryptContract, encryptWithMasterKey } from "@/lib/encryption";
 import { uploadEncryptedContract } from "@/lib/fileverse";
-import { setTextRecord } from "@/lib/ens";
 import { supabaseAdmin } from "@/lib/supabase";
 import { ethers } from "ethers";
 
@@ -78,9 +77,7 @@ export async function POST(req: NextRequest) {
     createdAt: contractPayload.issuedAt,
   });
 
-  // Anchor: store keccak256(fileId) as text record in ENS — CID never exposed publicly
   const docHash = ethers.keccak256(ethers.toUtf8Bytes(fileId));
-  await setTextRecord(employee.ens_name as string, "penguin.docHash", docHash);
 
   // Encrypt salary separately for cron job (server can decrypt, never goes to Fileverse)
   const amount_enc = encryptWithMasterKey(String(salary));

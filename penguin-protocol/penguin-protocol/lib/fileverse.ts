@@ -9,8 +9,8 @@ async function getAgent(): Promise<Agent> {
   if (_agent) return _agent;
 
   const storageProvider = new PinataStorageProvider({
-    jwt: process.env.PINATA_JWT!,
-    gateway: process.env.PINATA_GATEWAY!,
+    pinataJWT: process.env.PINATA_JWT!,
+    pinataGateway: process.env.PINATA_GATEWAY!,
   });
 
   const account = privateKeyToAccount(process.env.SIGNER_PRIVATE_KEY as `0x${string}`);
@@ -44,12 +44,14 @@ ${JSON.stringify(encryptedContract, null, 2)}
 `;
 
   const file = await agent.create(content);
-  return { fileId: file.fileId as string };
+  // fileId is a BigInt from the on-chain AddedFile event — stringify for storage
+  return { fileId: String(file.fileId) };
 }
 
 export async function getEncryptedContract(fileId: string): Promise<EncryptedContract> {
   const agent = await getAgent();
-  const fileData = await agent.getFile(fileId);
+  // getFile expects the BigInt fileId from the contract
+  const fileData = await agent.getFile(BigInt(fileId));
 
   // Extract JSON block from markdown
   const match = (fileData as string).match(/```json\n([\s\S]+?)\n```/);

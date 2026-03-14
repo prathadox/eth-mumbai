@@ -27,14 +27,17 @@ contract ShieldVaultTest is Test {
     MockUSDC    usdc;
     ShieldVault vault;
 
-    // Values from circuits/Prover.toml — fixed for this proof
-    bytes32 constant PROOF_MERKLE_ROOT    = 0x1aa72582ab7693c6a5bdcf66dba56a536c92fd4d8199db4e096d751a540c872a;
-    bytes32 constant PROOF_NULLIFIER_HASH = 0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5;
-    address constant PROOF_STEALTH_ADDR   = 0x1234567890AbcdEF1234567890aBcdef12345678;
-    uint256 constant PROOF_AMOUNT         = 10000; // whole USDC units
+    // Values from circuits/target/alice_stealth0/public_inputs.json
+    // Must match the public inputs exactly as used in proof generation
+    bytes32 constant PROOF_MERKLE_ROOT    = 0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7;
+    bytes32 constant PROOF_NULLIFIER_HASH = 0x045ac9eee2894825af45760bd85cb6a1f61f75c0566ffb48ec7e94dd854b5db9;
+    address constant PROOF_STEALTH_ADDR   = 0x2C33787f2e3F1AC4590fCB55d465A1F5E2E00542;
+    uint256 constant PROOF_AMOUNT         = 1000; // whole USDC units
 
     // commitment = h([actual_amount, employer_nonce, claim_pubkey, 0])
-    bytes32 constant COMMITMENT = 0x2470043abc6987f84987373a60b134684f48b2a3e6a1331b1076188151fefc98;
+    // Using Prover.toml values: actual_amount=1000, employer_nonce=1000,
+    // claim_pubkey=4466283326475118561367192150912450834224317832072171035171034013126163667223
+    bytes32 constant COMMITMENT = 0x0f1e8b983c06c78c55cd3a0eccf75e9a6818c418de531f16507cfb9f2c260298;
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -86,11 +89,12 @@ contract ShieldVaultTest is Test {
     // Verify the commitment matches what the circuit computed
     function testCommitmentMatchesCircuit() public pure {
         // commitment = h([actual_amount, employer_nonce, claim_pubkey, 0])
-        // claim_pubkey = 0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5
+        // From Prover.toml: actual_amount=1000, employer_nonce=1000,
+        // claim_pubkey=4466283326475118561367192150912450834224317832072171035171034013126163667223
         uint256 computed = MiMC.hash4(
-            10000,
-            11,
-            uint256(0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5),
+            1000,
+            1000,
+            4466283326475118561367192150912450834224317832072171035171034013126163667223,
             0
         );
         assertEq(bytes32(computed), COMMITMENT, "Commitment mismatch vs circuit");
@@ -98,10 +102,11 @@ contract ShieldVaultTest is Test {
 
     // Verify claim_pubkey = h([claim_secret, 0, 0, 0])
     function testClaimPubkeyMatchesCircuit() public pure {
-        uint256 pubkey = MiMC.hash4(7, 0, 0, 0); // claim_secret = 7
+        // From Prover.toml: claim_secret = 2591625727402636162724691238959001972087191813038961448525268342273997906717
+        uint256 pubkey = MiMC.hash4(2591625727402636162724691238959001972087191813038961448525268342273997906717, 0, 0, 0);
         assertEq(
             bytes32(pubkey),
-            0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5,
+            4466283326475118561367192150912450834224317832072171035171034013126163667223,
             "Claim pubkey mismatch"
         );
     }
@@ -294,6 +299,6 @@ contract ShieldVaultTest is Test {
 
     // Load proof bytes from disk (requires fs_permissions in foundry.toml)
     function _loadProof() internal view returns (bytes memory) {
-        return vm.readFileBinary("../circuits/target/alice_proof/proof");
+        return vm.readFileBinary("../circuits/target/alice_stealth0/proof");
     }
 }

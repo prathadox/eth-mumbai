@@ -5,7 +5,7 @@ libs = ["lib"]
 test = "test"
 script = "script"
 solc = "0.8.28"
-fs_permissions = [{ access = "read", path = "./test" }, { access = "read", path = "../circuits/target/alice_proof" }]
+fs_permissions = [{ access = "read", path = "./test" }, { access = "read", path = "./proofs" }]
 
 optimizer = true
 optimizer_runs = 200

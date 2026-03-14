@@ -14,7 +14,7 @@ out/
 build/
 
 # Noir / circuit artifacts
-circuits/target/
+# circuits/target/
 
 # Environment variables
 .env

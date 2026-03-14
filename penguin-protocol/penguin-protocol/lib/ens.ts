@@ -101,5 +101,9 @@ export async function getTextRecord(name: string, key: string): Promise<string> 
   if (resolverAddress === ethers.ZeroAddress) return "";
 
   const resolver = new ethers.Contract(resolverAddress, RESOLVER_ABI, getProvider());
-  return resolver.text(node, key);
+  try {
+    return await resolver.text(node, key);
+  } catch {
+    return "";
+  }
 }

@@ -3,30 +3,36 @@
 export const dynamic = "force-dynamic";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount, useWriteContract, useSwitchChain } from "wagmi";
+import { sepolia } from "wagmi/chains";
 import { useEffect, useState } from "react";
 import { useSiweAuth } from "@/lib/useSiweAuth";
 import { ethers } from "ethers";
 import Navbar from "@/components/layout/Navbar";
 
-const ENS_REGISTRY_ABI = [
+const NAME_WRAPPER_ABI = [
   {
     name: "setSubnodeOwner",
     type: "function",
     inputs: [
-      { name: "node", type: "bytes32" },
-      { name: "label", type: "bytes32" },
+      { name: "parentNode", type: "bytes32" },
+      { name: "label", type: "string" },
       { name: "owner", type: "address" },
+      { name: "fuses", type: "uint32" },
+      { name: "expiry", type: "uint64" },
     ],
-    outputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ name: "node", type: "bytes32" }],
   },
 ] as const;
+
+type ContractRecord = { id: number; fileverse_file_id: string; created_at: string };
 
 type Employee = {
   id: number;
   wallet_address: string;
   ens_name: string;
   status: string;
+  contracts?: ContractRecord[] | null;
 };
 
 type Company = {
@@ -35,9 +41,10 @@ type Company = {
 };
 
 export default function CompanyDashboard() {
-  const { isConnected } = useAccount();
+  const { isConnected, chainId } = useAccount();
   const { isSignedIn, signIn, authFetch } = useSiweAuth();
   const { writeContractAsync } = useWriteContract();
+  const { switchChainAsync } = useSwitchChain();
 
   const [company, setCompany] = useState<Company | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -59,6 +66,16 @@ export default function CompanyDashboard() {
     if (!isSignedIn) return;
     fetchData();
   }, [isSignedIn]);
+
+  useEffect(() => {
+    if (!isConnected) {
+      setCompany(null);
+      setEmployees([]);
+      setSelectedEmp(null);
+    } else if (isSignedIn) {
+      fetchData();
+    }
+  }, [isConnected]);
 
   async function fetchData() {
     setLoadingEmps(true);
@@ -83,15 +100,21 @@ export default function CompanyDashboard() {
     setInviting(true);
     setInviteError(null);
     try {
+      if (chainId !== sepolia.id) await switchChainAsync({ chainId: sepolia.id });
       const parentNode = ethers.namehash(company.ens_name) as `0x${string}`;
-      const labelHash = ethers.keccak256(ethers.toUtf8Bytes(inviteLabel)) as `0x${string}`;
       const ensName = `${inviteLabel}.${company.ens_name}`;
 
       const txHash = await writeContractAsync({
-        address: process.env.NEXT_PUBLIC_ENS_REGISTRY_ADDRESS as `0x${string}`,
-        abi: ENS_REGISTRY_ABI,
+        address: process.env.NEXT_PUBLIC_ENS_NAME_WRAPPER_ADDRESS as `0x${string}`,
+        abi: NAME_WRAPPER_ABI,
         functionName: "setSubnodeOwner",
-        args: [parentNode, labelHash, inviteWallet as `0x${string}`],
+        args: [
+          parentNode,
+          inviteLabel,
+          inviteWallet as `0x${string}`,
+          0,
+          BigInt(0),
+        ],
       });
 
       const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL!);
@@ -162,6 +185,17 @@ export default function CompanyDashboard() {
     <div className="min-h-screen bg-[#050505] text-white font-sans">
       <Navbar />
 
+      {isConnected && chainId !== sepolia.id && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[13px]">
+          <span>Switch to Ethereum Sepolia to use ENS features</span>
+          <button
+            onClick={() => switchChainAsync({ chainId: sepolia.id })}
+            className="text-[12px] text-amber-400 border border-amber-500/30 px-3 py-1 rounded-lg hover:bg-amber-500/10 transition-colors"
+          >
+            Switch
+          </button>
+        </div>
+      )}
       {!isConnected && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[13px]">
           <span>Reconnect wallet to invite employees</span>
@@ -204,108 +238,156 @@ export default function CompanyDashboard() {
         {/* Divider */}
         <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
 
-        {/* Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
+        {/* Invite Employee */}
+        <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-5">
+          <div>
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">01</p>
+            <h2 className="text-[18px] font-medium text-white">Invite Employee</h2>
+            <p className="text-[13px] text-gray-500 mt-1">
+              Signs a tx from your wallet creating the ENS subdomain.
+            </p>
+          </div>
 
-          {/* Invite Employee */}
-          <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-5">
-            <div>
-              <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">01</p>
-              <h2 className="text-[18px] font-medium text-white">Invite Employee</h2>
-              <p className="text-[13px] text-gray-500 mt-1">
-                Signs a tx from your wallet creating the ENS subdomain.
-              </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest">Wallet Address</label>
+              <input
+                value={inviteWallet}
+                onChange={(e) => setInviteWallet(e.target.value)}
+                placeholder="0x..."
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[13px] font-mono text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
+              />
             </div>
-
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest">Wallet Address</label>
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest">ENS Label</label>
+              <div className="flex items-center gap-2">
                 <input
-                  value={inviteWallet}
-                  onChange={(e) => setInviteWallet(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[13px] font-mono text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
+                  value={inviteLabel}
+                  onChange={(e) => setInviteLabel(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                  placeholder="alice"
+                  className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
                 />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] text-gray-500 uppercase tracking-widest">ENS Label</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    value={inviteLabel}
-                    onChange={(e) => setInviteLabel(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                    placeholder="alice"
-                    className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
-                  />
-                  {company && (
-                    <span className="text-[11px] text-gray-600 whitespace-nowrap">.{company.ens_name}</span>
-                  )}
-                </div>
+                {company && (
+                  <span className="text-[11px] text-gray-600 whitespace-nowrap">.{company.ens_name}</span>
+                )}
               </div>
             </div>
-
-            {inviteError && (
-              <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
-                <p className="text-red-400 text-[13px]">{inviteError}</p>
-              </div>
-            )}
-
-            <button
-              onClick={handleInvite}
-              disabled={!inviteWallet || !inviteLabel || inviting || !company}
-              className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
-            >
-              {inviting ? "Signing ENS tx…" : "Invite & Create Subdomain"}
-            </button>
           </div>
 
-          {/* Employee List */}
-          <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-5">
-            <div>
-              <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">02</p>
-              <h2 className="text-[18px] font-medium text-white">Employees</h2>
+          {inviteError && (
+            <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
+              <p className="text-red-400 text-[13px]">{inviteError}</p>
             </div>
+          )}
 
-            {loadingEmps ? (
+          <button
+            onClick={handleInvite}
+            disabled={!inviteWallet || !inviteLabel || inviting || !company}
+            className="py-2.5 px-6 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+          >
+            {inviting ? "Signing ENS tx…" : "Invite & Create Subdomain"}
+          </button>
+        </div>
+
+        {/* Employees Table */}
+        <div className="border border-white/[0.08] rounded-2xl overflow-hidden bg-white/[0.01]">
+          <div className="px-6 py-4 border-b border-white/[0.08]">
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">02</p>
+            <h2 className="text-[18px] font-medium text-white">Employees</h2>
+          </div>
+
+          {loadingEmps ? (
+            <div className="p-8 text-center">
               <p className="text-gray-600 text-[13px]">Loading…</p>
-            ) : employees.length === 0 ? (
-              <p className="text-gray-600 text-[13px]">No employees yet.</p>
-            ) : (
-              <div className="space-y-1">
-                {employees.map((emp) => (
-                  <div
-                    key={emp.id}
-                    className="flex items-center justify-between py-3 border-b border-white/[0.05] last:border-0"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${statusDot(emp.status)}`} />
-                        <p className="text-[14px] text-white">{emp.ens_name}</p>
-                      </div>
-                      <p className="text-[11px] font-mono text-gray-600 pl-3.5">
-                        {emp.wallet_address.slice(0, 10)}…
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] text-gray-500 uppercase tracking-widest">{emp.status}</span>
-                      {emp.status === "claimed" && (
-                        <button
-                          onClick={() => {
-                            setSelectedEmp(emp);
-                            setContractSuccess(false);
-                            setContractError(null);
-                            setSalary("");
-                          }}
-                          className="px-3 py-1 rounded-full border border-white/[0.08] text-[11px] text-white hover:bg-white/[0.08] transition-colors uppercase tracking-widest"
-                        >
-                          Issue Contract
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+            </div>
+          ) : employees.length === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-gray-600 text-[13px]">No employees yet. Invite one above.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-white/[0.08]">
+                    <th className="text-left px-6 py-4 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">ENS Name</th>
+                    <th className="text-left px-6 py-4 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Wallet</th>
+                    <th className="text-left px-6 py-4 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Status</th>
+                    <th className="text-left px-6 py-4 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Contract</th>
+                    <th className="text-left px-6 py-4 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {employees.map((emp) => {
+                    const contracts = Array.isArray(emp.contracts) ? emp.contracts : [];
+                    const hasContract = contracts.length > 0;
+                    const latestContract = hasContract
+                      ? [...contracts].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+                      : null;
+                    const canCreateContract = emp.status === "claimed" && !hasContract;
+                    const showCreateContract = !hasContract;
+
+                    return (
+                      <tr key={emp.id} className="border-b border-white/[0.05] last:border-0 hover:bg-white/[0.02] transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot(emp.status)}`} />
+                            <span className="text-[14px] text-white">{emp.ens_name}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-[13px] font-mono text-gray-400">{emp.wallet_address.slice(0, 10)}…{emp.wallet_address.slice(-6)}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="text-[11px] text-gray-500 uppercase tracking-widest">{emp.status}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {hasContract && latestContract ? (
+                            <span className="text-[12px] text-gray-400">
+                              {new Date(latestContract.created_at).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <span className="text-[12px] text-gray-600">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {showCreateContract ? (
+                            canCreateContract ? (
+                              <button
+                                onClick={() => {
+                                  setSelectedEmp(emp);
+                                  setContractSuccess(false);
+                                  setContractError(null);
+                                  setSalary("");
+                                }}
+                                className="px-3 py-1.5 rounded-full border border-white/[0.08] text-[11px] text-white hover:bg-white/[0.08] transition-colors uppercase tracking-widest"
+                              >
+                                Create Contract
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setSelectedEmp(emp);
+                                  setContractError(null);
+                                  setContractSuccess(false);
+                                }}
+                                className="px-3 py-1.5 rounded-full border border-amber-500/30 text-[11px] text-amber-400 hover:bg-amber-500/10 transition-colors uppercase tracking-widest"
+                              >
+                                Create Contract
+                              </button>
+                            )
+                          ) : hasContract ? (
+                            <span className="text-[11px] text-gray-500 uppercase tracking-widest">Active</span>
+                          ) : (
+                            <span className="text-[11px] text-gray-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </main>
 
@@ -319,7 +401,7 @@ export default function CompanyDashboard() {
                 <p className="text-blue-400 text-[15px]">{selectedEmp.ens_name}</p>
               </div>
               <button
-                onClick={() => setSelectedEmp(null)}
+                onClick={() => { setSelectedEmp(null); setContractError(null); }}
                 className="text-gray-600 hover:text-white transition-colors text-[18px] leading-none"
               >
                 ✕
@@ -328,6 +410,19 @@ export default function CompanyDashboard() {
 
             <div className="w-full h-[1px] bg-white/[0.06]" />
 
+            {selectedEmp.status !== "claimed" ? (
+              <div className="space-y-4">
+                <div className="border border-amber-500/20 bg-amber-500/5 rounded-xl px-4 py-3">
+                  <p className="text-amber-400 text-[13px]">
+                    This employee must claim their ENS subdomain first. Send them to{" "}
+                    <a href="/employee/claim" target="_blank" rel="noopener noreferrer" className="underline">
+                      /employee/claim
+                    </a>
+                  </p>
+                </div>
+              </div>
+            ) : (
+            <>
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-[11px] text-gray-500 uppercase tracking-widest">Monthly Salary (USDC)</label>
@@ -365,13 +460,17 @@ export default function CompanyDashboard() {
               </div>
             )}
 
-            <button
-              onClick={handleCreateContract}
-              disabled={!salary || creatingContract}
-              className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
-            >
-              {creatingContract ? "Encrypting & uploading…" : "Issue Encrypted Contract"}
-            </button>
+            {selectedEmp.status === "claimed" && (
+              <button
+                onClick={handleCreateContract}
+                disabled={!salary || creatingContract}
+                className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+              >
+                {creatingContract ? "Encrypting & uploading…" : "Issue Encrypted Contract"}
+              </button>
+            )}
+            </>
+            )}
           </div>
         </div>
       )}

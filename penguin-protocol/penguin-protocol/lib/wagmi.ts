@@ -9,8 +9,7 @@ const CHAIN_MAP: Record<string, typeof baseSepolia | typeof sepolia> = {
 function getChains() {
   const chainId = process.env.NEXT_PUBLIC_CHAIN_ID ?? "11155111";
   const primary = CHAIN_MAP[chainId] ?? sepolia;
-  const other = primary.id === baseSepolia.id ? sepolia : baseSepolia;
-  return [primary, other];
+  return [primary];
 }
 
 export const wagmiConfig = getDefaultConfig({

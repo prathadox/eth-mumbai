@@ -44,12 +44,14 @@ export default function CompanyOnboard() {
       setPubKey(pk);
       setReturningUser(true);
       setActiveTab("setup");
-      // Check if company already created for this session
       fetch("/api/companies/me", { headers: { Authorization: `Bearer ${t}` } })
-        .then((res) => setHasCompany(res.ok))
+        .then((res) => {
+          setHasCompany(res.ok);
+          if (res.ok) router.push("/company/dashboard");
+        })
         .catch(() => setHasCompany(false));
     }
-  }, []);
+  }, [router]);
 
   // Auto-advance tabs as prerequisites are met
   useEffect(() => {

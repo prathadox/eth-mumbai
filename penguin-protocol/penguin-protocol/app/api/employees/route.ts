@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
 
   const { data: employees, error } = await db
     .from("employees")
-    .select("id, wallet_address, ens_name, status, created_at")
+    .select("id, wallet_address, ens_name, status, created_at, contracts(id, fileverse_file_id, created_at)")
     .eq("company_id", company.id)
     .order("created_at", { ascending: false });
 

@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthAddress } from "@/lib/auth";
-import { getENSOwner, getTextRecord } from "@/lib/ens";
+import { getENSOwner } from "@/lib/ens";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   const walletAddress = getAuthAddress(req);
   if (!walletAddress) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { ensName } = await req.json();
+  const { ensName, pubKey } = await req.json();
   if (!ensName) return NextResponse.json({ error: "ensName required" }, { status: 400 });
+  if (!pubKey) return NextResponse.json({ error: "pubKey required" }, { status: 400 });
 
   const db = supabaseAdmin();
 
@@ -33,15 +34,6 @@ export async function POST(req: NextRequest) {
   if (currentOwner.toLowerCase() !== walletAddress.toLowerCase()) {
     return NextResponse.json(
       { error: "You must claim ENS ownership on-chain first (setSubnodeOwner)" },
-      { status: 400 }
-    );
-  }
-
-  // Verify the employee has set their public key as a text record on the ENS subdomain
-  const pubKey = await getTextRecord(ensName, "penguin.pubkey");
-  if (!pubKey) {
-    return NextResponse.json(
-      { error: "Set your public key on your ENS subdomain first (penguin.pubkey text record)" },
       { status: 400 }
     );
   }

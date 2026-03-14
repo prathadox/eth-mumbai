@@ -1,0 +1,86 @@
+{
+  "generatedAt": "2026-03-14T19:59:35.832Z",
+  "totalProofs": 6,
+  "successfulProofs": 6,
+  "failedProofs": 0,
+  "results": [
+    {
+      "employee": "Alice",
+      "stealthIndex": 0,
+      "proverFile": "Prover_alice_stealth0.toml",
+      "proofPath": "N/A (bb not available)",
+      "publicInputs": {
+        "merkleRoot": "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
+        "nullifierHash": "0x045ac9eee2894825af45760bd85cb6a1f61f75c0566ffb48ec7e94dd854b5db9",
+        "stealthAddress": "0x2c33787f2e3f1ac4590fcb55d465a1f5e2e005426f3f9a5ab78201cd9051f6ee",
+        "amount": "1000"
+      },
+      "success": true
+    },
+    {
+      "employee": "Bob",
+      "stealthIndex": 0,
+      "proverFile": "Prover_bob_stealth0.toml",
+      "proofPath": "N/A (bb not available)",
+      "publicInputs": {
+        "merkleRoot": "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
+        "nullifierHash": "0x172e7b7b73c86d03830fbf16672f389ada7936dd56d0908c61592f58bc506cdc",
+        "stealthAddress": "0x1d6d0198010fb919812e906f40e4ee418005ed680d5fe7473a2836f860d641c5",
+        "amount": "1000"
+      },
+      "success": true
+    },
+    {
+      "employee": "Bob",
+      "stealthIndex": 1,
+      "proverFile": "Prover_bob_stealth1.toml",
+      "proofPath": "N/A (bb not available)",
+      "publicInputs": {
+        "merkleRoot": "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
+        "nullifierHash": "0x1d779e35a48024123e06ecda89ae1cb9a9f18a7d27a9f32c806a90ec54201ca2",
+        "stealthAddress": "0x162b8592a434a70e6925854738d0b247828265242d8876eeb2ff0817973679a8",
+        "amount": "1000"
+      },
+      "success": true
+    },
+    {
+      "employee": "Carol",
+      "stealthIndex": 0,
+      "proverFile": "Prover_carol_stealth0.toml",
+      "proofPath": "N/A (bb not available)",
+      "publicInputs": {
+        "merkleRoot": "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
+        "nullifierHash": "0x22b91a750f372cb2ffc3d345bd56f858efde9dfba29bddd9eb31b30b83076c66",
+        "stealthAddress": "0x1d4ad25f1d7c925a2ab5152c588d7580a91d3bd067c9703a594c785e0a09d22f",
+        "amount": "1000"
+      },
+      "success": true
+    },
+    {
+      "employee": "Carol",
+      "stealthIndex": 1,
+      "proverFile": "Prover_carol_stealth1.toml",
+      "proofPath": "N/A (bb not available)",
+      "publicInputs": {
+        "merkleRoot": "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
+        "nullifierHash": "0x12894f6da88be20062751bf2c5742cfb0557dd5d6b9e7ee2b12d644cdeaa6cd7",
+        "stealthAddress": "0x2533594a2e5039bb3471a273ccdeb28b2cfa1122545020815121b767494b909f",
+        "amount": "1000"
+      },
+      "success": true
+    },
+    {
+      "employee": "Carol",
+      "stealthIndex": 2,
+      "proverFile": "Prover_carol_stealth2.toml",
+      "proofPath": "N/A (bb not available)",
+      "publicInputs": {
+        "merkleRoot": "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
+        "nullifierHash": "0x163683a13de095ae493c8cde6052cd22d20285b80533e9895fe3d3b14a3b9ed5",
+        "stealthAddress": "0x2bc0945fff7227fcddc22c52c570e6d45b49a79af4bbdfcfb4d4e5abb814d4c8",
+        "amount": "1000"
+      },
+      "success": true
+    }
+  ]
+}

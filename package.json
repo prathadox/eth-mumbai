@@ -1,0 +1,13 @@
+{
+  "name": "eth-mumbai-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "generate-stealth": "tsx scripts/generate-stealth-data.ts",
+    "generate-proofs": "tsx scripts/generate-proofs.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.0.0"
+  }
+}

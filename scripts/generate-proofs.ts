@@ -116,14 +116,14 @@ async function generateProofs(): Promise<void> {
             let proofPath = '';
             try {
                 console.log(`  Running bb prove...`);
-                const proofDest = join(outputSubdirPath, 'proof');
+                const vkPath = join(CIRCUITS_DIR, 'target', 'vk', 'vk', 'vk');
                 runCommand(
                     `bb prove -b ${join(CIRCUITS_DIR, 'target', 'circuits.json')} ` +
                     `-w ${join(CIRCUITS_DIR, 'target', 'circuits.gz')} ` +
-                    `-o ${proofDest} -t evm`,
+                    `-o ${outputSubdirPath} -k ${vkPath} -t evm`,
                     CIRCUITS_DIR
                 );
-                proofPath = proofDest;
+                proofPath = join(outputSubdirPath, 'proof');
                 console.log(`  Proof generated successfully`);
             } catch (bbError) {
                 console.log(`  bb prove skipped (bb may not be installed)`);

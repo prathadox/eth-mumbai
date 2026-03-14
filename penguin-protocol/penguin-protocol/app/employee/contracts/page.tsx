@@ -50,11 +50,16 @@ export default function EmployeeContracts() {
     try {
       const res = await authFetch("/api/contracts/me");
       const data = await res.json();
-      if (res.status === 404) {
-        router.push("/employee/claim?message=Claim+your+ENS+first");
+      if (res.status === 401) {
+        router.push("/employee/claim");
         return;
       }
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok && res.status !== 404) throw new Error(data.error);
+      if (res.status === 404) {
+        // Not an employee at all — send to claim
+        router.push("/employee/claim");
+        return;
+      }
       setContracts(data.employee?.contracts ?? []);
     } catch (e: unknown) {
       setError((e as Error).message);

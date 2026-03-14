@@ -10,18 +10,18 @@ import { useSiweAuth } from "@/lib/useSiweAuth";
 import { ethers } from "ethers";
 import Navbar from "@/components/layout/Navbar";
 
-const NAME_WRAPPER_ABI = [
+const ENS_REGISTRY_ABI = [
   {
-    name: "setSubnodeOwner",
+    name: "setSubnodeRecord",
     type: "function",
     inputs: [
-      { name: "parentNode", type: "bytes32" },
-      { name: "label", type: "string" },
+      { name: "node", type: "bytes32" },
+      { name: "label", type: "bytes32" },
       { name: "owner", type: "address" },
-      { name: "fuses", type: "uint32" },
-      { name: "expiry", type: "uint64" },
+      { name: "resolver", type: "address" },
+      { name: "ttl", type: "uint64" },
     ],
-    outputs: [{ name: "node", type: "bytes32" }],
+    outputs: [],
   },
 ] as const;
 
@@ -102,17 +102,18 @@ export default function CompanyDashboard() {
     try {
       if (chainId !== sepolia.id) await switchChainAsync({ chainId: sepolia.id });
       const parentNode = ethers.namehash(company.ens_name) as `0x${string}`;
+      const labelHash = ethers.keccak256(ethers.toUtf8Bytes(inviteLabel)) as `0x${string}`;
       const ensName = `${inviteLabel}.${company.ens_name}`;
 
       const txHash = await writeContractAsync({
-        address: process.env.NEXT_PUBLIC_ENS_NAME_WRAPPER_ADDRESS as `0x${string}`,
-        abi: NAME_WRAPPER_ABI,
-        functionName: "setSubnodeOwner",
+        address: process.env.NEXT_PUBLIC_ENS_REGISTRY_ADDRESS as `0x${string}`,
+        abi: ENS_REGISTRY_ABI,
+        functionName: "setSubnodeRecord",
         args: [
           parentNode,
-          inviteLabel,
+          labelHash,
           inviteWallet as `0x${string}`,
-          0,
+          process.env.NEXT_PUBLIC_ENS_PUBLIC_RESOLVER_ADDRESS as `0x${string}`,
           BigInt(0),
         ],
       });

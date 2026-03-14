@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const { data: employee, error } = await db
     .from("employees")
     .select("id, ens_name, wallet_address, status, contracts(fileverse_file_id, doc_hash, created_at)")
-    .eq("wallet_address", walletAddress)
+    .ilike("wallet_address", walletAddress)
     .single();
 
   if (error || !employee) {

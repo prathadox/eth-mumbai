@@ -11,17 +11,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Navbar from "@/components/layout/Navbar";
 
-type ClaimStep = "idle" | "pubkey-signing" | "verifying" | "done";
-type Tab = "connect" | "verify" | "authenticate" | "register";
-
-const STEP_LABELS: Record<ClaimStep, string> = {
-  idle: "Set Encryption Key",
-  "pubkey-signing": "Signing message…",
-  verifying: "Registering…",
-  done: "Done",
-};
-
-const CLAIM_STEPS: ClaimStep[] = ["pubkey-signing", "verifying"];
+type ClaimStep = "idle" | "signing" | "registering" | "done";
+type Tab = "connect" | "verify" | "authenticate";
 
 export default function EmployeeClaim() {
   const router = useRouter();
@@ -45,13 +36,17 @@ export default function EmployeeClaim() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // If signed in and already an employee, redirect to contracts
+  // If signed in and already claimed/active, redirect to contracts
   useEffect(() => {
-    if (!isSignedIn) return;
-    authFetch("/api/contracts/me").then((res) => {
-      if (res.ok) router.push("/employee/contracts");
-    });
-  }, [isSignedIn, router]);
+    if (!isSignedIn || !address) return;
+    fetch(`/api/employees/verify-ens?address=${encodeURIComponent(address)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.valid && (data.status === "claimed" || data.status === "active")) {
+          router.push("/employee/contracts");
+        }
+      });
+  }, [isSignedIn, address, router]);
 
   // Auto-advance tabs
   useEffect(() => {
@@ -67,9 +62,12 @@ export default function EmployeeClaim() {
     }
   }, [ensVerified]);
 
+  // After sign-in OR when landing on authenticate tab while already signed in, auto-run key registration
   useEffect(() => {
-    if (isSignedIn && activeTab === "authenticate") setActiveTab("register");
-  }, [isSignedIn]);
+    if (isSignedIn && activeTab === "authenticate" && ensName && claimStep === "idle" && !success) {
+      handleRegister();
+    }
+  }, [isSignedIn, activeTab]);
 
   async function autoDetectEns(addr: string) {
     setVerifying(true);
@@ -94,33 +92,9 @@ export default function EmployeeClaim() {
     }
   }
 
-  async function verifyEns() {
-    if (!ensName.trim() || !address) return;
-    setVerifying(true);
-    setError(null);
-    setEnsVerified(null);
-    try {
-      const res = await fetch(
-        `/api/employees/verify-ens?ensName=${encodeURIComponent(ensName.trim())}&address=${encodeURIComponent(address)}`
-      );
-      const data = await res.json();
-      setEnsVerified({ valid: data.valid, status: data.status });
-      if (data.valid) setEnsName(data.ensName ?? ensName.trim());
-      if (data.valid && (data.status === "claimed" || data.status === "active")) {
-        router.push("/employee/contracts");
-        return;
-      }
-      if (!data.valid) setError(data.error ?? "Invalid ENS subdomain");
-    } catch {
-      setError("Failed to verify ENS");
-    } finally {
-      setVerifying(false);
-    }
-  }
-
   async function handleRegister() {
     if (!ensName || !address) return;
-    setClaimStep("pubkey-signing");
+    setClaimStep("signing");
     setError(null);
 
     try {
@@ -136,7 +110,7 @@ export default function EmployeeClaim() {
       const { pubKey, error: pubError } = await pubRes.json();
       if (pubError) throw new Error(pubError);
 
-      setClaimStep("verifying");
+      setClaimStep("registering");
       const res = await authFetch("/api/employees/claim", {
         method: "POST",
         body: JSON.stringify({ ensName: ensName.trim().toLowerCase(), pubKey }),
@@ -146,19 +120,17 @@ export default function EmployeeClaim() {
 
       setClaimStep("done");
       setSuccess(true);
+      setTimeout(() => router.push("/employee/contracts"), 1500);
     } catch (e: unknown) {
       setError((e as Error).message);
       setClaimStep("idle");
     }
   }
 
-  const currentStepIdx = CLAIM_STEPS.indexOf(claimStep);
-
   const tabs: { id: Tab; label: string; num: string; unlocked: boolean }[] = [
     { id: "connect",      label: "Connect",      num: "01", unlocked: true },
     { id: "verify",       label: "Verify ENS",   num: "02", unlocked: isConnected },
-    { id: "authenticate", label: "Authenticate", num: "03", unlocked: isConnected && !!ensVerified?.valid },
-    { id: "register",     label: "Register Key", num: "04", unlocked: isSignedIn && !!ensVerified?.valid },
+    { id: "authenticate", label: "Sign In",       num: "03", unlocked: isConnected && !!ensVerified?.valid },
   ];
 
   return (
@@ -223,10 +195,7 @@ export default function EmployeeClaim() {
                 {tab.id === "verify" && ensVerified?.valid && (
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.8)]" />
                 )}
-                {tab.id === "authenticate" && isSignedIn && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.8)]" />
-                )}
-                {tab.id === "register" && success && (
+                {tab.id === "authenticate" && (isSignedIn || success) && (
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.8)]" />
                 )}
               </button>
@@ -288,23 +257,15 @@ export default function EmployeeClaim() {
                   <div className="space-y-3">
                     <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
                       <p className="text-red-400 text-[13px]">{error}</p>
+                      <p className="text-[12px] text-gray-500 mt-1">Ask your company to invite your wallet first.</p>
                     </div>
-                    <p className="text-[12px] text-gray-500">Or enter it manually:</p>
-                    <div className="flex gap-2">
-                      <input
-                        value={ensName}
-                        onChange={(e) => { setEnsName(e.target.value); setError(null); }}
-                        placeholder="alice.acme.eth"
-                        className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[14px] text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
-                      />
-                      <button
-                        onClick={verifyEns}
-                        disabled={!ensName.trim() || verifying}
-                        className="px-4 py-2.5 rounded-xl border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
-                      >
-                        {verifying ? "…" : "Verify"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => address && autoDetectEns(address)}
+                      disabled={verifying}
+                      className="w-full py-2 rounded-xl border border-white/[0.08] text-gray-400 text-[13px] hover:bg-white/[0.04] disabled:opacity-40 transition-colors"
+                    >
+                      {verifying ? "Retrying…" : "Retry"}
+                    </button>
                   </div>
                 )}
 
@@ -319,45 +280,19 @@ export default function EmployeeClaim() {
               </div>
             )}
 
-            {/* Authenticate */}
+            {/* Authenticate + Auto-register */}
             {activeTab === "authenticate" && (
               <div className="space-y-5">
                 <div>
                   <p className="text-[15px] font-medium text-white mb-1">Sign in with your wallet</p>
-                  <p className="text-[13px] text-gray-500">Prove wallet ownership. No gas required.</p>
+                  <p className="text-[13px] text-gray-500">One signature proves ownership and registers your key. No gas.</p>
                 </div>
-                {isSignedIn ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-                      <p className="text-[13px] text-gray-400 font-mono">{address?.slice(0, 6)}…{address?.slice(-4)} authenticated</p>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab("register")}
-                      className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] transition-colors"
-                    >
-                      Continue →
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={signIn}
-                    className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] transition-colors"
-                  >
-                    Sign in with wallet
-                  </button>
-                )}
-              </div>
-            )}
 
-            {/* Register Key */}
-            {activeTab === "register" && (
-              <div className="space-y-5">
                 {success ? (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-                      <p className="text-[14px] text-white">Public key set on-chain. You&apos;re ready.</p>
+                      <p className="text-[14px] text-white">You&apos;re in. Ready to view contracts.</p>
                     </div>
                     <Link
                       href="/employee/contracts"
@@ -366,49 +301,48 @@ export default function EmployeeClaim() {
                       View your contracts →
                     </Link>
                   </div>
-                ) : (
-                  <>
-                    <div>
-                      <p className="text-[15px] font-medium text-white mb-1">Register your encryption key</p>
-                      <p className="text-[13px] text-gray-500">
-                        Signs a message to derive your public key, then writes it to{" "}
-                        <span className="text-gray-400 font-mono">{ensName || "your ENS"}</span> as a text record.
-                        Required for contract encryption.
+                ) : claimStep !== "idle" ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-500 animate-pulse" />
+                      <p className="text-[13px] text-gray-400">
+                        {claimStep === "signing" ? "Sign the key message in your wallet…" : "Registering your key…"}
                       </p>
                     </div>
-
-                    {claimStep !== "idle" && (
-                      <div className="space-y-2 py-1">
-                        {CLAIM_STEPS.map((s, i) => (
-                          <div
-                            key={s}
-                            className={`flex items-center gap-3 text-[13px] ${
-                              i === currentStepIdx ? "text-white" : i < currentStepIdx ? "text-gray-500" : "text-gray-700"
-                            }`}
-                          >
-                            <span className="w-4 text-center font-mono">
-                              {i < currentStepIdx ? "✓" : i === currentStepIdx ? "◌" : "·"}
-                            </span>
-                            <span>{STEP_LABELS[s]}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
                     {error && (
                       <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
                         <p className="text-red-400 text-[13px]">{error}</p>
+                        <button
+                          onClick={handleRegister}
+                          className="mt-2 text-[12px] text-gray-400 underline"
+                        >
+                          Retry
+                        </button>
                       </div>
                     )}
-
-                    <button
-                      onClick={handleRegister}
-                      disabled={claimStep !== "idle"}
-                      className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
-                    >
-                      {claimStep === "idle" ? "Set Encryption Key" : STEP_LABELS[claimStep]}
-                    </button>
-                  </>
+                  </div>
+                ) : isSignedIn ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+                      <p className="text-[13px] text-gray-400 font-mono">{address?.slice(0, 6)}…{address?.slice(-4)} authenticated</p>
+                    </div>
+                    {error && (
+                      <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
+                        <p className="text-red-400 text-[13px]">{error}</p>
+                        <button onClick={handleRegister} className="mt-2 text-[12px] text-gray-400 underline">
+                          Retry key registration
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={signIn}
+                    className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] transition-colors"
+                  >
+                    Sign in with wallet
+                  </button>
                 )}
               </div>
             )}

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthAddress } from "@/lib/auth";
-import { getENSOwner } from "@/lib/ens";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
@@ -27,15 +26,6 @@ export async function POST(req: NextRequest) {
   }
   if (employee.status === "active") {
     return NextResponse.json({ error: "Already active" }, { status: 400 });
-  }
-
-  // Verify the employee now owns their ENS subdomain on-chain
-  const currentOwner = await getENSOwner(ensName);
-  if (currentOwner.toLowerCase() !== walletAddress.toLowerCase()) {
-    return NextResponse.json(
-      { error: "You must claim ENS ownership on-chain first (setSubnodeOwner)" },
-      { status: 400 }
-    );
   }
 
   const { data: updated, error } = await db

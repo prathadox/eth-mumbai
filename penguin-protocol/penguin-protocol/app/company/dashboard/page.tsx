@@ -76,6 +76,10 @@ export default function CompanyDashboard() {
 
   async function handleInvite() {
     if (!inviteWallet || !inviteLabel || !company) return;
+    if (!isConnected) {
+      setInviteError("Reconnect wallet to sign the ENS transaction");
+      return;
+    }
     setInviting(true);
     setInviteError(null);
     try {
@@ -140,14 +144,6 @@ export default function CompanyDashboard() {
     : s === "claimed" ? "bg-yellow-500"
     : "bg-gray-600";
 
-  if (!isConnected) {
-    return (
-      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
-        <ConnectButton />
-      </div>
-    );
-  }
-
   if (!isSignedIn) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4">
@@ -165,6 +161,13 @@ export default function CompanyDashboard() {
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans">
       <Navbar />
+
+      {!isConnected && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[13px]">
+          <span>Reconnect wallet to invite employees</span>
+          <ConnectButton />
+        </div>
+      )}
 
       <main className="relative z-10 max-w-[1100px] mx-auto px-6 pt-32 pb-20 space-y-8">
         {/* Glow */}

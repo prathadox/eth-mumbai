@@ -25,7 +25,7 @@ type ContractPayload = {
 };
 
 export default function EmployeeContracts() {
-  const { isConnected, address } = useAccount();
+  const { address } = useAccount();
   const { isSignedIn, signIn, authFetch } = useSiweAuth();
 
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
@@ -38,14 +38,14 @@ export default function EmployeeContracts() {
   const [decryptError, setDecryptError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isSignedIn || !address) return;
+    if (!isSignedIn) return;
     fetchContracts();
-  }, [isSignedIn, address]);
+  }, [isSignedIn]);
 
   async function fetchContracts() {
     setLoading(true);
     try {
-      const res = await authFetch(`/api/contracts/${address}`);
+      const res = await authFetch("/api/contracts/me");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setContracts(data.employee.contracts ?? []);
@@ -75,14 +75,6 @@ export default function EmployeeContracts() {
     }
   }
 
-  if (!isConnected) {
-    return (
-      <div className="min-h-screen bg-[#050505] text-white flex items-center justify-center">
-        <ConnectButton />
-      </div>
-    );
-  }
-
   if (!isSignedIn) {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center gap-4">
@@ -109,7 +101,9 @@ export default function EmployeeContracts() {
           <div>
             <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-2">Employee Portal</p>
             <h1 className="text-4xl font-medium tracking-tight text-white">My Contracts</h1>
-            <p className="text-[13px] text-gray-500 mt-2 font-mono">{address?.slice(0, 10)}…{address?.slice(-6)}</p>
+            <p className="text-[13px] text-gray-500 mt-2 font-mono">
+              {address ? `${address.slice(0, 10)}…${address.slice(-6)}` : "Signed in"}
+            </p>
           </div>
           <ConnectButton />
         </div>

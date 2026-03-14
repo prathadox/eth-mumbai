@@ -28,9 +28,12 @@ export function getAuthAddress(request: Request): string | null {
 export async function generateNonce(address: string): Promise<string> {
   const db = supabaseAdmin();
   const nonce = crypto.randomUUID().replace(/-/g, "");
-  const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 min
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 min
 
-  await db.from("auth_nonces").upsert({ address: address.toLowerCase(), nonce, expires_at: expiresAt });
+  const { error } = await db
+    .from("auth_nonces")
+    .upsert({ address: address.toLowerCase(), nonce, expires_at: expiresAt }, { onConflict: "address" });
+  if (error) throw new Error(error.message);
   return nonce;
 }
 
@@ -50,7 +53,7 @@ export async function verifySiweAndIssueJWT(
     .eq("address", address)
     .single();
 
-  if (!record) throw new Error("No nonce found — request a new one");
+  if (!record) throw new Error("No nonce found — try signing in again (fetch a fresh nonce)");
   if (new Date(record.expires_at) < new Date()) throw new Error("Nonce expired");
   if (record.nonce !== fields.nonce) throw new Error("Nonce mismatch");
 

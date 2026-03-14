@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ token, pubKey });
   } catch (e: unknown) {
+    console.error("[siwe] auth error:", e);
     return NextResponse.json({ error: (e as Error).message }, { status: 401 });
   }
 }

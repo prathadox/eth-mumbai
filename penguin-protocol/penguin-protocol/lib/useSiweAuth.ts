@@ -23,8 +23,10 @@ export function useSiweAuth() {
     setError(null);
 
     try {
-      const nonceRes = await fetch(`/api/auth/nonce?address=${address}`);
-      const { nonce } = await nonceRes.json();
+      const nonceRes = await fetch(`/api/auth/nonce?address=${address}`, { cache: "no-store" });
+      const data = await nonceRes.json();
+      if (!nonceRes.ok) throw new Error(data.error ?? "Failed to get nonce");
+      const { nonce } = data;
 
       const message = new SiweMessage({
         domain: window.location.host,

@@ -25,7 +25,7 @@ export default function Navbar() {
           <Link href="#architecture" className="hover:text-white transition-colors">Architecture</Link>
           <Link href="#security" className="hover:text-white transition-colors">Security</Link>
           <Link href="#developers" className="hover:text-white transition-colors">Developers</Link>
-          <Link href="/claim" className="text-white hover:text-white/80 transition-colors">Employee Portal</Link>
+          <Link href="/employee/claim" className="text-white hover:text-white/80 transition-colors">Employee Portal</Link>
         </div>
 
         {/* Right: Text-only Stats & Button */}
@@ -34,7 +34,7 @@ export default function Navbar() {
           <div className="hidden md:flex items-center px-4 py-1.5 rounded-full border border-white/[0.08] bg-white/[0.02] gap-3">
             <div className="flex items-center gap-2 cursor-default">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span> 
-              Base Sepolia
+              {process.env.NEXT_PUBLIC_CHAIN_ID === "84532" ? "Base Sepolia" : "Ethereum Sepolia"}
             </div>
             
             <div className="w-[1px] h-3 bg-white/[0.08]"></div>
@@ -45,7 +45,7 @@ export default function Navbar() {
           </div>
 
           <Link 
-            href="/dashboard" 
+            href="/company/onboard" 
             className="text-white px-5 py-2 rounded-full border border-white/[0.08] hover:bg-white/[0.05] transition-colors font-medium"
           >
             CFO Dashboard

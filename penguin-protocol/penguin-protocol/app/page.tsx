@@ -1,29 +1,15 @@
-import Link from "next/link";
+import Navbar from "@/components/layout/Navbar";
 
-export default function Home() {
+export default function LandingPage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-8 px-4">
-      <div className="text-center space-y-3">
-        <h1 className="text-4xl font-bold tracking-tight">🐧 Penguin Protocol</h1>
-        <p className="text-gray-400 text-lg max-w-md">
-          Private payroll onboarding with BitGo treasury, ENS identity, and Fileverse encrypted contracts.
-        </p>
-      </div>
-
-      <div className="flex gap-4">
-        <Link
-          href="/company/onboard"
-          className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-semibold transition-colors"
-        >
-          Company Onboarding
-        </Link>
-        <Link
-          href="/employee/claim"
-          className="px-6 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl font-semibold transition-colors"
-        >
-          Employee Portal
-        </Link>
-      </div>
-    </main>
+    // Extremely dark background, almost black to match the screenshot
+    <div className="min-h-screen bg-[#050505] text-white font-sans">
+      <Navbar />
+      
+      {/* Rest of the page goes here later */}
+      <main className="pt-40 px-6 max-w-7xl mx-auto flex flex-col items-center">
+         {/* Placeholder for the hero */}
+      </main>
+    </div>
   );
 }

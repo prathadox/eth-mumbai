@@ -27,6 +27,7 @@ export default function CompanyOnboard() {
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
+  const [ensName, setEnsName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,7 +74,7 @@ export default function CompanyOnboard() {
   }, [address, chainId, signMessageAsync]);
 
   async function handleCreate() {
-    if (!name || !slug || !token || !pubKey) return;
+    if (!name || !slug || !ensName || !token || !pubKey) return;
     setSubmitting(true);
     setError(null);
 
@@ -84,7 +85,7 @@ export default function CompanyOnboard() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ name, slug: slug.toLowerCase(), pubKey }),
+        body: JSON.stringify({ name, slug: slug.toLowerCase(), pubKey, ensName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -104,7 +105,7 @@ export default function CompanyOnboard() {
         <div>
           <h1 className="text-2xl font-bold">Company Onboarding</h1>
           <p className="text-gray-400 text-sm mt-1">
-            Connect wallet → sign in → set up your treasury and ENS identity.
+            Connect your wallet → sign in → link your ENS name → set up treasury.
           </p>
         </div>
 
@@ -149,20 +150,26 @@ export default function CompanyOnboard() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm text-gray-300">ENS Slug *</label>
-              <div className="flex items-center gap-2">
-                <input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                  placeholder="acme"
-                  className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <span className="text-gray-500 text-sm whitespace-nowrap">
-                  .{process.env.NEXT_PUBLIC_ENS_ROOT_DOMAIN ?? "penguin.eth"}
-                </span>
-              </div>
+              <label className="text-sm text-gray-300">Internal Slug *</label>
+              <input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                placeholder="acme"
+                className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <p className="text-xs text-gray-500">Lowercase, alphanumeric. Used as an internal ID.</p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm text-gray-300">Your ENS Name *</label>
+              <input
+                value={ensName}
+                onChange={(e) => setEnsName(e.target.value.trim().toLowerCase())}
+                placeholder="acme.eth"
+                className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              />
               <p className="text-xs text-gray-500">
-                Your company ENS: {slug || "yourslug"}.{process.env.NEXT_PUBLIC_ENS_ROOT_DOMAIN ?? "penguin.eth"}
+                Must be owned by your connected wallet on Ethereum Sepolia. We verify on-chain.
               </p>
             </div>
 
@@ -170,10 +177,10 @@ export default function CompanyOnboard() {
 
             <button
               onClick={handleCreate}
-              disabled={!name || !slug || submitting}
+              disabled={!name || !slug || !ensName || submitting}
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-xl font-semibold transition-colors"
             >
-              {submitting ? "Creating ENS + BitGo treasury…" : "Create Company"}
+              {submitting ? "Verifying ENS + creating BitGo treasury…" : "Create Company"}
             </button>
           </div>
         )}

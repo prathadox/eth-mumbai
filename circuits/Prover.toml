@@ -1,7 +1,12 @@
-commitment = "0x0804ed80722ab5b5852a9460ca028575ff532e83d54f2b298397a3efabf5fa23"
-nullifier = "0x2bf315d7db1f5d2440153f29b08a0b840abac113911b3808b9009ab790577a9b"
-amount = "10000"
+merkle_root    = "0x1aa72582ab7693c6a5bdcf66dba56a536c92fd4d8199db4e096d751a540c872a"
+nullifier_hash = "0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5"
+recipient      = "0x1234567890abcdef1234567890abcdef12345678"
+amount         = "10000"
 
-secret = "7"
-nonce = "11"
-actual_amount = "10000"
+claim_secret   = "7"
+claim_pubkey   = "0x1396c32028ed63af7f97462b7193b33e22c57947eb4a066022edf33332919da5"
+employer_nonce = "11"
+actual_amount  = "10000"
+leaf_index     = "0"
+merkle_path    = ["0", "0", "0", "0", "0"]
+path_indices   = ["0", "0", "0", "0", "0"]

@@ -21,7 +21,7 @@ export default function Navbar() {
 
         <Link href="/" className="flex items-center gap-3 pr-8 hover:opacity-80 transition-opacity">
           <Image src="/logo.png" alt="ShieldPay Logo" width={24} height={24} className="w-6 h-6 object-contain" priority />
-          <span className="text-white text-[15px] tracking-wide font-semibold">ShieldPay</span>
+          <span className="text-white text-[15px] tracking-wide font-semibold">Penguin pay</span>
         </Link>
 
         <div className="hidden lg:flex items-center gap-8">

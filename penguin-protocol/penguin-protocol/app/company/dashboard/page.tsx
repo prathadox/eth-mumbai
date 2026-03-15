@@ -3,13 +3,13 @@
 export const dynamic = "force-dynamic";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useWriteContract, useSwitchChain, useReadContract } from "wagmi";
+import { useAccount, useWriteContract, useSwitchChain } from "wagmi";
 import { sepolia, baseSepolia } from "wagmi/chains";
 import { useEffect, useState } from "react";
 import { useSiweAuth } from "@/lib/useSiweAuth";
 import { ethers } from "ethers";
 import Navbar from "@/components/layout/Navbar";
-import { SHIELD_VAULT_ABI, MOCK_USDC_ABI, DEMO_COMMITMENTS, DEMO_AMOUNTS } from "@/lib/shieldVault";
+import { MOCK_USDC_ABI } from "@/lib/shieldVault";
 
 // NameWrapper: used for wrapped .eth names (all ens.app registrations since 2023)
 const NAME_WRAPPER_ABI = [
@@ -82,33 +82,22 @@ export default function CompanyDashboard() {
   const [contractError, setContractError] = useState<string | null>(null);
   const [contractSuccess, setContractSuccess] = useState(false);
 
-  // Fund Vault state
+  // Fund Treasury state
   const [fundingVault, setFundingVault] = useState(false);
   const [fundVaultError, setFundVaultError] = useState<string | null>(null);
-  const [fundVaultSuccess, setFundVaultSuccess] = useState(false);
+  const [fundAmount, setFundAmount] = useState("6000");
+  const [fundLogs, setFundLogs] = useState<string[]>([]);
+  const addFundLog = (msg: string) => setFundLogs((p) => [...p, msg]);
 
-  const VAULT_ADDR = process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`;
+  // Treasury → ShieldVault state
+  const [depositingVault, setDepositingVault] = useState(false);
+  const [depositLogs, setDepositLogs] = useState<string[]>([]);
+  const addDepositLog = (msg: string) => setDepositLogs((p) => [...p, msg]);
+
   const USDC_ADDR = process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS as `0x${string}`;
+  const VAULT_ADDR = process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`;
 
   const { address: walletAddress } = useAccount();
-
-  const { data: vaultBalance } = useReadContract({
-    address: USDC_ADDR,
-    abi: MOCK_USDC_ABI,
-    functionName: "balanceOf",
-    args: [VAULT_ADDR],
-    chainId: baseSepolia.id,
-    query: { refetchInterval: 8000 },
-  });
-
-  const { data: walletUsdcBalance } = useReadContract({
-    address: USDC_ADDR,
-    abi: MOCK_USDC_ABI,
-    functionName: "balanceOf",
-    args: [walletAddress ?? "0x0000000000000000000000000000000000000000"],
-    chainId: baseSepolia.id,
-    query: { refetchInterval: 8000, enabled: !!walletAddress },
-  });
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -235,37 +224,43 @@ export default function CompanyDashboard() {
   }
 
   async function handleFundVault() {
+    if (!company?.bitgo_receive_address) {
+      setFundVaultError("No BitGo treasury address found for your company.");
+      return;
+    }
     setFundingVault(true);
     setFundVaultError(null);
-    setFundVaultSuccess(false);
+    setFundLogs([]);
+    const amount = Number(fundAmount) || 6000;
     try {
+      addFundLog(`→ Switching to Base Sepolia (chainId 84532)…`);
       if (chainId !== baseSepolia.id) await switchChainAsync({ chainId: baseSepolia.id });
-      const totalAmount = DEMO_AMOUNTS.reduce((a, b) => a + b, 0); // 6000
-      // 1. Approve MockUSDC for ShieldVault
-      const approveTx = await writeContractAsync({
+      addFundLog(`✓ Connected to Base Sepolia`);
+
+      addFundLog(`→ Transferring ${amount.toLocaleString()} MockUSDC → BitGo Treasury`);
+      addFundLog(`  MockUSDC:        ${USDC_ADDR}`);
+      addFundLog(`  BitGo Treasury:  ${company.bitgo_receive_address}`);
+
+      const tx = await writeContractAsync({
         address: USDC_ADDR,
         abi: MOCK_USDC_ABI,
-        functionName: "approve",
-        args: [VAULT_ADDR, BigInt(totalAmount) * BigInt(1e6)],
-        chainId: baseSepolia.id,
-      });
-      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL!);
-      await provider.waitForTransaction(approveTx);
-      // 2. DepositBatch
-      const depositTx = await writeContractAsync({
-        address: VAULT_ADDR,
-        abi: SHIELD_VAULT_ABI,
-        functionName: "depositBatch",
+        functionName: "transfer",
         args: [
-          [...DEMO_COMMITMENTS] as `0x${string}`[],
-          DEMO_AMOUNTS.map((a) => BigInt(a)),
+          company.bitgo_receive_address as `0x${string}`,
+          BigInt(amount) * BigInt(1e6),
         ],
         chainId: baseSepolia.id,
       });
-      await provider.waitForTransaction(depositTx);
-      setFundVaultSuccess(true);
+      addFundLog(`  transfer() tx: ${tx}`);
+
+      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL!);
+      await provider.waitForTransaction(tx);
+      addFundLog(`✓ ${amount.toLocaleString()} USDC deposited to BitGo treasury`);
+      addFundLog(`✓ Treasury: ${company.bitgo_receive_address}`);
     } catch (e: unknown) {
-      setFundVaultError((e as Error).message);
+      const msg = (e as Error).message;
+      setFundVaultError(msg);
+      addFundLog(`✗ Error: ${msg}`);
     } finally {
       setFundingVault(false);
     }
@@ -398,44 +393,57 @@ export default function CompanyDashboard() {
           </button>
         </div>
 
-        {/* ShieldPay Vault Card */}
+        {/* Treasury Card */}
         <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">02 · ShieldPay Vault</p>
-              <h2 className="text-[18px] font-medium text-white">Fund Privacy Vault</h2>
-              <p className="text-[13px] text-gray-500 mt-1">
-                Deposits 6 payroll commitments into the on-chain ZK vault on Base Sepolia. Employees claim privately via ZK proofs.
+          <div>
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">02 · ShieldPay</p>
+            <h2 className="text-[18px] font-medium text-white">Fund Treasury</h2>
+            <p className="text-[13px] text-gray-500 mt-1">
+              Send MockUSDC to your BitGo treasury on Base Sepolia. ZK payroll is disbursed from there.
+            </p>
+            {company?.bitgo_receive_address && (
+              <p className="text-[12px] font-mono text-gray-600 mt-2">
+                Treasury: {company.bitgo_receive_address}
               </p>
-            </div>
+            )}
           </div>
 
-          <div className="border-t border-white/[0.06] pt-4">
-            <p className="text-[12px] text-gray-600 mb-3">
-              Contract: <span className="font-mono">{VAULT_ADDR?.slice(0, 10)}…</span>
-            </p>
+          <div className="border-t border-white/[0.06] pt-4 space-y-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] text-gray-500 uppercase tracking-widest">Amount (USDC)</label>
+              <input
+                type="number"
+                value={fundAmount}
+                onChange={(e) => setFundAmount(e.target.value)}
+                placeholder="6000"
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-2.5 text-[14px] text-white placeholder-gray-600 outline-none focus:border-white/20 transition-colors"
+              />
+            </div>
 
             {fundVaultError && (
-              <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3 mb-3">
+              <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
                 <p className="text-red-400 text-[13px] break-all">{fundVaultError}</p>
-              </div>
-            )}
-            {fundVaultSuccess && (
-              <div className="flex items-center gap-2 mb-3">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-                <p className="text-[13px] text-gray-300">6 commitments deposited into ShieldVault.</p>
               </div>
             )}
 
             <button
               onClick={handleFundVault}
-              disabled={fundingVault}
+              disabled={fundingVault || !company?.bitgo_receive_address}
               className="py-2.5 px-6 rounded-full border border-blue-500/40 text-blue-400 text-[14px] hover:bg-blue-500/10 disabled:opacity-40 transition-colors"
             >
-              {fundingVault ? "Funding vault…" : "Fund Vault"}
+              {fundingVault ? "Sending…" : "Deposit to Treasury"}
             </button>
             {chainId !== baseSepolia.id && (
-              <p className="text-[11px] text-amber-400 mt-2">Will auto-switch to Base Sepolia</p>
+              <p className="text-[11px] text-amber-400">Will auto-switch to Base Sepolia</p>
+            )}
+
+            {fundLogs.length > 0 && (
+              <div className="bg-black/60 border border-white/[0.06] rounded-xl p-4 font-mono text-[11px] space-y-1 max-h-52 overflow-y-auto">
+                {fundLogs.map((l, i) => (
+                  <p key={i} className={l.startsWith("✓") ? "text-blue-400" : l.startsWith("✗") ? "text-red-400" : "text-gray-500"}>{l}</p>
+                ))}
+                {fundingVault && <p className="text-gray-600 animate-pulse">…</p>}
+              </div>
             )}
           </div>
         </div>

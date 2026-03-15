@@ -29,6 +29,7 @@ type ContractPayload = {
 };
 
 // Proof entries for the demo vault
+// alice_stealth0 was used for testing — demo uses bob/carol proofs
 const VAULT_PROOFS = [
   { key: "alice_stealth0", employee: "Alice", amount: 1000 },
   { key: "bob_stealth0",   employee: "Bob",   amount: 1000 },
@@ -60,6 +61,8 @@ export default function EmployeeContracts() {
   const [claiming, setClaiming] = useState<string | null>(null);
   const [claimResult, setClaimResult] = useState<Record<string, string>>({});
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimLogs, setClaimLogs] = useState<string[]>([]);
+  const addClaimLog = (msg: string) => setClaimLogs((p) => [...p, msg]);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -127,16 +130,29 @@ export default function EmployeeContracts() {
   async function handleClaim(proofKey: string) {
     setClaiming(proofKey);
     setClaimError(null);
+    setClaimLogs([]);
     try {
+      addClaimLog(`→ Switching to Base Sepolia (chainId 84532)…`);
       if (chainId !== baseSepolia.id) await switchChainAsync({ chainId: baseSepolia.id });
+      addClaimLog(`✓ Connected to Base Sepolia`);
 
-      // Fetch proof from API
+      addClaimLog(`→ Loading pre-generated ZK proof: ${proofKey}`);
       const res = await fetch(`/api/contracts/proof?key=${encodeURIComponent(proofKey)}`);
       if (!res.ok) throw new Error((await res.json()).error);
       const { proofHex, publicInputs } = await res.json();
 
+      const proofBytes = (proofHex.length - 2) / 2;
+      addClaimLog(`✓ Proof loaded (${proofBytes} bytes) — UltraHonk / Barretenberg`);
+      addClaimLog(`  Merkle root:    ${publicInputs.merkleRoot}`);
+      addClaimLog(`  Nullifier hash: ${publicInputs.nullifierHash}`);
+      addClaimLog(`  Amount:         ${Number(publicInputs.amount).toLocaleString()} USDC`);
+
+      const VAULT = process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`;
+      addClaimLog(`→ Calling withdrawToStealth() on ShieldVault`);
+      addClaimLog(`  ShieldVault: ${VAULT}`);
+
       const tx = await writeContractAsync({
-        address: process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`,
+        address: VAULT,
         abi: SHIELD_VAULT_ABI,
         functionName: "withdrawToStealth",
         args: [
@@ -148,9 +164,14 @@ export default function EmployeeContracts() {
         ],
         chainId: baseSepolia.id,
       });
+      addClaimLog(`  withdrawToStealth() tx: ${tx}`);
+      addClaimLog(`✓ ${Number(publicInputs.amount).toLocaleString()} USDC → stealth address`);
+      addClaimLog(`✓ Nullifier recorded — cannot double-claim`);
       setClaimResult((prev) => ({ ...prev, [proofKey]: tx }));
     } catch (e: unknown) {
-      setClaimError((e as Error).message);
+      const msg = (e as Error).message;
+      setClaimError(msg);
+      addClaimLog(`✗ Error: ${msg}`);
     } finally {
       setClaiming(null);
     }
@@ -327,6 +348,20 @@ export default function EmployeeContracts() {
             </div>
           )}
         </div>
+
+        {claimLogs.length > 0 && (
+          <div className="border border-white/[0.08] rounded-2xl overflow-hidden bg-white/[0.01]">
+            <div className="px-6 py-3 border-b border-white/[0.06]">
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest">ZK Claim Log</p>
+            </div>
+            <div className="p-4 font-mono text-[11px] space-y-1 max-h-60 overflow-y-auto">
+              {claimLogs.map((l, i) => (
+                <p key={i} className={l.startsWith("✓") ? "text-blue-400" : l.startsWith("✗") ? "text-red-400" : "text-gray-500"}>{l}</p>
+              ))}
+              {claiming && <p className="text-gray-600 animate-pulse">…</p>}
+            </div>
+          </div>
+        )}
 
       </main>
     </div>

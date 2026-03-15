@@ -3,7 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useSignMessage } from "wagmi";
+import { useAccount, useSignMessage, useWriteContract, useSwitchChain } from "wagmi";
+import { baseSepolia } from "wagmi/chains";
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { useSiweAuth } from "@/lib/useSiweAuth";
@@ -11,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { decryptContractBrowser } from "@/lib/encryption.client";
 import type { EncryptedContract } from "@/lib/encryption";
 import Navbar from "@/components/layout/Navbar";
+import { SHIELD_VAULT_ABI } from "@/lib/shieldVault";
 
 type ContractRecord = {
   fileverse_file_id: string;
@@ -26,11 +28,23 @@ type ContractPayload = {
   issuedBy: string;
 };
 
+// Proof entries for the demo vault
+const VAULT_PROOFS = [
+  { key: "alice_stealth0", employee: "Alice", amount: 1000 },
+  { key: "bob_stealth0",   employee: "Bob",   amount: 1000 },
+  { key: "bob_stealth1",   employee: "Bob",   amount: 1000 },
+  { key: "carol_stealth0", employee: "Carol", amount: 1000 },
+  { key: "carol_stealth1", employee: "Carol", amount: 1000 },
+  { key: "carol_stealth2", employee: "Carol", amount: 1000 },
+];
+
 export default function EmployeeContracts() {
   const router = useRouter();
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
   const { isSignedIn, signIn, authFetch } = useSiweAuth();
   const { signMessageAsync } = useSignMessage();
+  const { writeContractAsync } = useWriteContract();
+  const { switchChainAsync } = useSwitchChain();
 
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,6 +55,11 @@ export default function EmployeeContracts() {
   const [unlocking, setUnlocking] = useState(false);
   const [decrypting, setDecrypting] = useState<string | null>(null);
   const [decryptError, setDecryptError] = useState<string | null>(null);
+
+  // Claim salary state
+  const [claiming, setClaiming] = useState<string | null>(null);
+  const [claimResult, setClaimResult] = useState<Record<string, string>>({});
+  const [claimError, setClaimError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -102,6 +121,38 @@ export default function EmployeeContracts() {
       setDecryptError((e as Error).message);
     } finally {
       setDecrypting(null);
+    }
+  }
+
+  async function handleClaim(proofKey: string) {
+    setClaiming(proofKey);
+    setClaimError(null);
+    try {
+      if (chainId !== baseSepolia.id) await switchChainAsync({ chainId: baseSepolia.id });
+
+      // Fetch proof from API
+      const res = await fetch(`/api/contracts/proof?key=${encodeURIComponent(proofKey)}`);
+      if (!res.ok) throw new Error((await res.json()).error);
+      const { proofHex, publicInputs } = await res.json();
+
+      const tx = await writeContractAsync({
+        address: process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`,
+        abi: SHIELD_VAULT_ABI,
+        functionName: "withdrawToStealth",
+        args: [
+          proofHex as `0x${string}`,
+          publicInputs.merkleRoot as `0x${string}`,
+          publicInputs.nullifierHash as `0x${string}`,
+          publicInputs.stealthAddress as `0x${string}`,
+          BigInt(publicInputs.amount),
+        ],
+        chainId: baseSepolia.id,
+      });
+      setClaimResult((prev) => ({ ...prev, [proofKey]: tx }));
+    } catch (e: unknown) {
+      setClaimError((e as Error).message);
+    } finally {
+      setClaiming(null);
     }
   }
 
@@ -185,9 +236,9 @@ export default function EmployeeContracts() {
           )}
         </div>
 
-        {(error || decryptError) && (
+        {(error || decryptError || claimError) && (
           <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3">
-            <p className="text-red-400 text-[13px]">{error ?? decryptError}</p>
+            <p className="text-red-400 text-[13px] break-all">{error ?? decryptError ?? claimError}</p>
           </div>
         )}
 
@@ -214,11 +265,14 @@ export default function EmployeeContracts() {
                   <th className="text-left py-4 px-6 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Salary</th>
                   <th className="text-left py-4 px-6 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Interval</th>
                   <th className="text-left py-4 px-6 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Decrypt</th>
+                  <th className="text-left py-4 px-6 text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Claim Salary</th>
                 </tr>
               </thead>
               <tbody>
-                {contracts.map((c) => {
+                {contracts.map((c, idx) => {
                   const payload = decrypted[c.fileverse_file_id];
+                  const proofKey = VAULT_PROOFS[idx % VAULT_PROOFS.length].key;
+                  const txHash = claimResult[proofKey];
                   return (
                     <tr key={c.fileverse_file_id} className="border-b border-white/[0.05] last:border-b-0 hover:bg-white/[0.02] transition-colors">
                       <td className="py-4 px-6 text-[13px] font-mono text-gray-400">
@@ -249,6 +303,22 @@ export default function EmployeeContracts() {
                           </button>
                         )}
                       </td>
+                      <td className="py-4 px-6">
+                        {txHash ? (
+                          <span className="text-[11px] text-blue-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(59,130,246,0.8)]" />
+                            Claimed
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleClaim(proofKey)}
+                            disabled={claiming === proofKey}
+                            className="py-1.5 px-3 rounded-lg border border-blue-500/30 text-[12px] text-blue-400 hover:bg-blue-500/10 disabled:opacity-40 transition-colors"
+                          >
+                            {claiming === proofKey ? "…" : "Claim"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -257,6 +327,7 @@ export default function EmployeeContracts() {
             </div>
           )}
         </div>
+
       </main>
     </div>
   );

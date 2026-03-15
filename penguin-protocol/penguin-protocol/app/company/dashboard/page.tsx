@@ -3,13 +3,33 @@
 export const dynamic = "force-dynamic";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useWriteContract, useSwitchChain } from "wagmi";
-import { sepolia } from "wagmi/chains";
+import { useAccount, useWriteContract, useSwitchChain, useReadContract } from "wagmi";
+import { sepolia, baseSepolia } from "wagmi/chains";
 import { useEffect, useState } from "react";
 import { useSiweAuth } from "@/lib/useSiweAuth";
 import { ethers } from "ethers";
 import Navbar from "@/components/layout/Navbar";
+import { SHIELD_VAULT_ABI, MOCK_USDC_ABI, DEMO_COMMITMENTS, DEMO_AMOUNTS } from "@/lib/shieldVault";
 
+// NameWrapper: used for wrapped .eth names (all ens.app registrations since 2023)
+const NAME_WRAPPER_ABI = [
+  {
+    name: "setSubnodeRecord",
+    type: "function",
+    inputs: [
+      { name: "parentNode", type: "bytes32" },
+      { name: "label", type: "string" },
+      { name: "owner", type: "address" },
+      { name: "resolver", type: "address" },
+      { name: "ttl", type: "uint64" },
+      { name: "fuses", type: "uint32" },
+      { name: "expiry", type: "uint64" },
+    ],
+    outputs: [{ name: "node", type: "bytes32" }],
+  },
+] as const;
+
+// Raw ENS registry fallback (unwrapped names)
 const ENS_REGISTRY_ABI = [
   {
     name: "setSubnodeRecord",
@@ -62,6 +82,34 @@ export default function CompanyDashboard() {
   const [contractError, setContractError] = useState<string | null>(null);
   const [contractSuccess, setContractSuccess] = useState(false);
 
+  // Fund Vault state
+  const [fundingVault, setFundingVault] = useState(false);
+  const [fundVaultError, setFundVaultError] = useState<string | null>(null);
+  const [fundVaultSuccess, setFundVaultSuccess] = useState(false);
+
+  const VAULT_ADDR = process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`;
+  const USDC_ADDR = process.env.NEXT_PUBLIC_MOCK_USDC_ADDRESS as `0x${string}`;
+
+  const { address: walletAddress } = useAccount();
+
+  const { data: vaultBalance } = useReadContract({
+    address: USDC_ADDR,
+    abi: MOCK_USDC_ABI,
+    functionName: "balanceOf",
+    args: [VAULT_ADDR],
+    chainId: baseSepolia.id,
+    query: { refetchInterval: 8000 },
+  });
+
+  const { data: walletUsdcBalance } = useReadContract({
+    address: USDC_ADDR,
+    abi: MOCK_USDC_ABI,
+    functionName: "balanceOf",
+    args: [walletAddress ?? "0x0000000000000000000000000000000000000000"],
+    chainId: baseSepolia.id,
+    query: { refetchInterval: 8000, enabled: !!walletAddress },
+  });
+
   useEffect(() => {
     if (!isSignedIn) return;
     fetchData();
@@ -102,21 +150,44 @@ export default function CompanyDashboard() {
     try {
       if (chainId !== sepolia.id) await switchChainAsync({ chainId: sepolia.id });
       const parentNode = ethers.namehash(company.ens_name) as `0x${string}`;
-      const labelHash = ethers.keccak256(ethers.toUtf8Bytes(inviteLabel)) as `0x${string}`;
       const ensName = `${inviteLabel}.${company.ens_name}`;
+      const oneYearFromNow = BigInt(Math.floor(Date.now() / 1000) + 365 * 24 * 3600);
 
-      const txHash = await writeContractAsync({
-        address: process.env.NEXT_PUBLIC_ENS_REGISTRY_ADDRESS as `0x${string}`,
-        abi: ENS_REGISTRY_ABI,
-        functionName: "setSubnodeRecord",
-        args: [
-          parentNode,
-          labelHash,
-          inviteWallet as `0x${string}`,
-          process.env.NEXT_PUBLIC_ENS_PUBLIC_RESOLVER_ADDRESS as `0x${string}`,
-          BigInt(0),
-        ],
-      });
+      let txHash: `0x${string}`;
+      try {
+        // Try NameWrapper first (wrapped .eth names — default since ENS v2 / ens.app)
+        txHash = await writeContractAsync({
+          address: process.env.NEXT_PUBLIC_ENS_NAME_WRAPPER_ADDRESS as `0x${string}`,
+          abi: NAME_WRAPPER_ABI,
+          functionName: "setSubnodeRecord",
+          args: [
+            parentNode,
+            inviteLabel,
+            inviteWallet as `0x${string}`,
+            process.env.NEXT_PUBLIC_ENS_PUBLIC_RESOLVER_ADDRESS as `0x${string}`,
+            BigInt(0),
+            0,
+            oneYearFromNow,
+          ],
+          gas: BigInt(300_000),
+        });
+      } catch {
+        // Fallback: raw ENS Registry (unwrapped names)
+        const labelHash = ethers.keccak256(ethers.toUtf8Bytes(inviteLabel)) as `0x${string}`;
+        txHash = await writeContractAsync({
+          address: process.env.NEXT_PUBLIC_ENS_REGISTRY_ADDRESS as `0x${string}`,
+          abi: ENS_REGISTRY_ABI,
+          functionName: "setSubnodeRecord",
+          args: [
+            parentNode,
+            labelHash,
+            inviteWallet as `0x${string}`,
+            process.env.NEXT_PUBLIC_ENS_PUBLIC_RESOLVER_ADDRESS as `0x${string}`,
+            BigInt(0),
+          ],
+          gas: BigInt(200_000),
+        });
+      }
 
       const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_RPC_URL!);
       await provider.waitForTransaction(txHash);
@@ -160,6 +231,43 @@ export default function CompanyDashboard() {
       setContractError((e as Error).message);
     } finally {
       setCreatingContract(false);
+    }
+  }
+
+  async function handleFundVault() {
+    setFundingVault(true);
+    setFundVaultError(null);
+    setFundVaultSuccess(false);
+    try {
+      if (chainId !== baseSepolia.id) await switchChainAsync({ chainId: baseSepolia.id });
+      const totalAmount = DEMO_AMOUNTS.reduce((a, b) => a + b, 0); // 6000
+      // 1. Approve MockUSDC for ShieldVault
+      const approveTx = await writeContractAsync({
+        address: USDC_ADDR,
+        abi: MOCK_USDC_ABI,
+        functionName: "approve",
+        args: [VAULT_ADDR, BigInt(totalAmount) * BigInt(1e6)],
+        chainId: baseSepolia.id,
+      });
+      const provider = new ethers.JsonRpcProvider(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL!);
+      await provider.waitForTransaction(approveTx);
+      // 2. DepositBatch
+      const depositTx = await writeContractAsync({
+        address: VAULT_ADDR,
+        abi: SHIELD_VAULT_ABI,
+        functionName: "depositBatch",
+        args: [
+          [...DEMO_COMMITMENTS] as `0x${string}`[],
+          DEMO_AMOUNTS.map((a) => BigInt(a)),
+        ],
+        chainId: baseSepolia.id,
+      });
+      await provider.waitForTransaction(depositTx);
+      setFundVaultSuccess(true);
+    } catch (e: unknown) {
+      setFundVaultError((e as Error).message);
+    } finally {
+      setFundingVault(false);
     }
   }
 
@@ -242,7 +350,7 @@ export default function CompanyDashboard() {
         {/* Invite Employee */}
         <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-5">
           <div>
-            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">01</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">01 · Onboarding</p>
             <h2 className="text-[18px] font-medium text-white">Invite Employee</h2>
             <p className="text-[13px] text-gray-500 mt-1">
               Signs a tx from your wallet creating the ENS subdomain.
@@ -290,10 +398,52 @@ export default function CompanyDashboard() {
           </button>
         </div>
 
+        {/* ShieldPay Vault Card */}
+        <div className="border border-white/[0.08] rounded-2xl p-6 bg-white/[0.01] space-y-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">02 · ShieldPay Vault</p>
+              <h2 className="text-[18px] font-medium text-white">Fund Privacy Vault</h2>
+              <p className="text-[13px] text-gray-500 mt-1">
+                Deposits 6 payroll commitments into the on-chain ZK vault on Base Sepolia. Employees claim privately via ZK proofs.
+              </p>
+            </div>
+          </div>
+
+          <div className="border-t border-white/[0.06] pt-4">
+            <p className="text-[12px] text-gray-600 mb-3">
+              Contract: <span className="font-mono">{VAULT_ADDR?.slice(0, 10)}…</span>
+            </p>
+
+            {fundVaultError && (
+              <div className="border border-red-500/20 bg-red-500/5 rounded-xl px-4 py-3 mb-3">
+                <p className="text-red-400 text-[13px] break-all">{fundVaultError}</p>
+              </div>
+            )}
+            {fundVaultSuccess && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
+                <p className="text-[13px] text-gray-300">6 commitments deposited into ShieldVault.</p>
+              </div>
+            )}
+
+            <button
+              onClick={handleFundVault}
+              disabled={fundingVault}
+              className="py-2.5 px-6 rounded-full border border-blue-500/40 text-blue-400 text-[14px] hover:bg-blue-500/10 disabled:opacity-40 transition-colors"
+            >
+              {fundingVault ? "Funding vault…" : "Fund Vault"}
+            </button>
+            {chainId !== baseSepolia.id && (
+              <p className="text-[11px] text-amber-400 mt-2">Will auto-switch to Base Sepolia</p>
+            )}
+          </div>
+        </div>
+
         {/* Employees Table */}
         <div className="border border-white/[0.08] rounded-2xl overflow-hidden bg-white/[0.01]">
           <div className="px-6 py-4 border-b border-white/[0.08]">
-            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">02</p>
+            <p className="text-[11px] text-gray-500 uppercase tracking-widest mb-1">03 · Roster</p>
             <h2 className="text-[18px] font-medium text-white">Employees</h2>
           </div>
 

@@ -30,19 +30,43 @@ function getRegistry(withSigner = false) {
   );
 }
 
-// Returns the current owner of an ENS name on-chain
+// Returns the current owner of an ENS name on-chain.
+// For wrapped names (all .eth registered via ens.app since 2023), the registry owner
+// is the NameWrapper contract — so we also check NameWrapper.ownerOf(tokenId).
 export async function getENSOwner(name: string): Promise<string> {
   const node = ethers.namehash(name);
   return getRegistry().owner(node);
 }
 
-// Verifies that the given wallet owns the ENS name on-chain
+const NAME_WRAPPER_ABI = [
+  "function ownerOf(uint256 tokenId) view returns (address)",
+];
+
+// Verifies that the given wallet owns the ENS name.
+// Checks both: raw ENS registry AND NameWrapper (for wrapped .eth names).
 export async function verifyENSOwnership(
   name: string,
   walletAddress: string
 ): Promise<boolean> {
-  const owner = await getENSOwner(name);
-  return owner.toLowerCase() === walletAddress.toLowerCase();
+  const node = ethers.namehash(name);
+  const tokenId = BigInt(node);
+
+  // 1. Raw registry check (unwrapped names)
+  const registryOwner = await getRegistry().owner(node);
+  if (registryOwner.toLowerCase() === walletAddress.toLowerCase()) return true;
+
+  // 2. NameWrapper check (wrapped .eth names — default since ENS v2)
+  const wrapperAddress = process.env.ENS_NAME_WRAPPER_ADDRESS
+    ?? process.env.NEXT_PUBLIC_ENS_NAME_WRAPPER_ADDRESS;
+  if (!wrapperAddress) return false;
+
+  try {
+    const wrapper = new ethers.Contract(wrapperAddress, NAME_WRAPPER_ABI, getProvider());
+    const wrappedOwner: string = await wrapper.ownerOf(tokenId);
+    return wrappedOwner.toLowerCase() === walletAddress.toLowerCase();
+  } catch {
+    return false;
+  }
 }
 
 // Sets the addr record on the company's ENS name to their BitGo treasury address.

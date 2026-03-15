@@ -9,6 +9,8 @@
     "generate-verifier": "tsx scripts/generate-verifier.ts"
   },
   "devDependencies": {
+    "dotenv": "^17.3.1",
+    "ethers": "^6.16.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   }

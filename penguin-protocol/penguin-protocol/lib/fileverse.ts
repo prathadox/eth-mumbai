@@ -8,7 +8,8 @@ let _agent: Agent | null = null;
 async function getAgent(): Promise<Agent> {
   if (_agent) return _agent;
 
-  const storageProvider = new PinataStorageProvider({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const storageProvider = new (PinataStorageProvider as any)({
     pinataJWT: process.env.PINATA_JWT!,
     pinataGateway: process.env.PINATA_GATEWAY!,
   });
@@ -48,10 +49,56 @@ ${JSON.stringify(encryptedContract, null, 2)}
   return { fileId: String(file.fileId) };
 }
 
+export async function uploadProof(
+  proofHex: string,
+  meta: {
+    key: string;
+    employee: string;
+    nullifierHash: string;
+    stealthAddress: string;
+    merkleRoot: string;
+    amount: number;
+  }
+): Promise<{ fileId: string }> {
+  const agent = await getAgent();
+  const content = `# ShieldPay ZK Proof — ${meta.key}
+
+**Employee:** ${meta.employee}
+**Proof Key:** ${meta.key}
+**Nullifier Hash:** ${meta.nullifierHash}
+**Stealth Address:** ${meta.stealthAddress}
+**Merkle Root:** ${meta.merkleRoot}
+**Amount:** ${meta.amount} USDC
+
+\`\`\`json
+${JSON.stringify({ proofHex, nullifierHash: meta.nullifierHash, stealthAddress: meta.stealthAddress, merkleRoot: meta.merkleRoot, amount: meta.amount }, null, 2)}
+\`\`\`
+`;
+  const file = await agent.create(content);
+  return { fileId: String(file.fileId) };
+}
+
+export async function getProof(
+  fileId: string
+): Promise<{ proofHex: string; nullifierHash: string; stealthAddress: string; merkleRoot: string; amount: number }> {
+  const agent = await getAgent();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fileData = (await (agent as any).getFile(fileId)) as { contentIpfsHash: string };
+  const ipfsHash = fileData.contentIpfsHash.replace("ipfs://", "");
+  const gateway = process.env.PINATA_GATEWAY!.replace(/\/$/, "");
+  const res = await fetch(`${gateway}/ipfs/${ipfsHash}`);
+  if (!res.ok) throw new Error(`Failed to fetch proof from IPFS: ${res.status}`);
+  const text = await res.text();
+  const match = text.match(/```json\n([\s\S]+?)\n```/);
+  if (!match) throw new Error("Could not parse proof from Fileverse file");
+  return JSON.parse(match[1]);
+}
+
 export async function getEncryptedContract(fileId: string): Promise<EncryptedContract> {
   const agent = await getAgent();
   // getFile returns { portal, namespace, metadataIpfsHash, contentIpfsHash }
-  const fileData = await agent.getFile(BigInt(fileId)) as {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fileData = (await (agent as any).getFile(fileId)) as {
     contentIpfsHash: string;
   };
 

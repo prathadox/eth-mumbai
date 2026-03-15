@@ -30,11 +30,11 @@ const USDC_ABI = [
   "function balanceOf(address) external view returns (uint256)",
 ];
 
-// alice_stealth0 public inputs
+// bob_stealth0 public inputs
 const PUBLIC_INPUTS = {
   merkleRoot:    "0x16724eb551f43b3b9161b5b6fef99436f59bb8ed8d832da843c1147cf341cef7",
-  nullifierHash: "0x045ac9eee2894825af45760bd85cb6a1f61f75c0566ffb48ec7e94dd854b5db9",
-  stealthAddr:   "0x2c33787f2e3f1ac4590fcb55d465a1f5e2e005426f3f9a5ab78201cd9051f6ee",
+  nullifierHash: "0x172e7b7b73c86d03830fbf16672f389ada7936dd56d0908c61592f58bc506cdc",
+  stealthAddr:   "0x1d6d0198010fb919812e906f40e4ee418005ed680d5fe7473a2836f860d641c5",
   amount:        1000n,
 };
 
@@ -45,9 +45,8 @@ function log(msg: string) {
 
 async function main() {
   console.log("\x1b[1m" + "=".repeat(60) + "\x1b[0m");
-  console.log("\x1b[1m  ZK Claim Test — alice_stealth0\x1b[0m");
-  console.log("\x1b[33m  ⚠  This burns alice_stealth0 nullifier (one-time use)\x1b[0m");
-  console.log("\x1b[33m  ⚠  Use bob/carol proofs for the demo\x1b[0m");
+  console.log("\x1b[1m  ZK Claim Test — bob_stealth0\x1b[0m");
+  console.log("\x1b[33m  ⚠  This burns bob_stealth0 nullifier (one-time use)\x1b[0m");
   console.log("\x1b[1m" + "=".repeat(60) + "\x1b[0m\n");
 
   const provider = new ethers.JsonRpcProvider(RPC);
@@ -58,14 +57,13 @@ async function main() {
   log(`[1/4] Checking nullifier status…`);
   const spent = await vault.isNullifierSpent(PUBLIC_INPUTS.nullifierHash) as boolean;
   if (spent) {
-    log(`✗ Nullifier already spent — alice_stealth0 was already claimed`);
-    log(`  Use bob_stealth0 or carol_stealth0 for the next claim`);
+    log(`✗ Nullifier already spent — bob_stealth0 was already claimed`);
     return;
   }
   log(`✓ Nullifier fresh — not yet claimed`);
 
-  log(`\n[2/4] Loading proof binary from circuits/target/alice_stealth0/proof…`);
-  const proofPath = path.resolve(__dirname, "../circuits/target/alice_stealth0/proof");
+  log(`\n[2/4] Loading proof binary from circuits/target/bob_stealth0/proof…`);
+  const proofPath = path.resolve(__dirname, "../circuits/target/bob_stealth0/proof");
   const proofBuf  = readFileSync(proofPath);
   const proofHex  = "0x" + proofBuf.toString("hex");
   log(`✓ Proof loaded: ${proofBuf.length} bytes (UltraHonk / Barretenberg)`);

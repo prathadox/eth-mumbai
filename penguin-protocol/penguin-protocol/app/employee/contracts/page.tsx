@@ -3,8 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useSignMessage, useWriteContract, useSwitchChain } from "wagmi";
-import { baseSepolia } from "wagmi/chains";
+import { useAccount, useSignMessage } from "wagmi";
 import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { useSiweAuth } from "@/lib/useSiweAuth";
@@ -12,7 +11,6 @@ import { useRouter } from "next/navigation";
 import { decryptContractBrowser } from "@/lib/encryption.client";
 import type { EncryptedContract } from "@/lib/encryption";
 import Navbar from "@/components/layout/Navbar";
-import { SHIELD_VAULT_ABI } from "@/lib/shieldVault";
 
 type ContractRecord = {
   fileverse_file_id: string;
@@ -31,9 +29,6 @@ type ContractPayload = {
 // Proof entries for the demo vault
 // alice_stealth0 was used for testing — demo uses bob/carol proofs
 const VAULT_PROOFS = [
-  { key: "alice_stealth0", employee: "Alice", amount: 1000 },
-  { key: "bob_stealth0",   employee: "Bob",   amount: 1000 },
-  { key: "bob_stealth1",   employee: "Bob",   amount: 1000 },
   { key: "carol_stealth0", employee: "Carol", amount: 1000 },
   { key: "carol_stealth1", employee: "Carol", amount: 1000 },
   { key: "carol_stealth2", employee: "Carol", amount: 1000 },
@@ -41,11 +36,9 @@ const VAULT_PROOFS = [
 
 export default function EmployeeContracts() {
   const router = useRouter();
-  const { address, chainId } = useAccount();
+  const { address } = useAccount();
   const { isSignedIn, signIn, authFetch } = useSiweAuth();
   const { signMessageAsync } = useSignMessage();
-  const { writeContractAsync } = useWriteContract();
-  const { switchChainAsync } = useSwitchChain();
 
   const [contracts, setContracts] = useState<ContractRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -132,42 +125,23 @@ export default function EmployeeContracts() {
     setClaimError(null);
     setClaimLogs([]);
     try {
-      addClaimLog(`→ Switching to Base Sepolia (chainId 84532)…`);
-      if (chainId !== baseSepolia.id) await switchChainAsync({ chainId: baseSepolia.id });
-      addClaimLog(`✓ Connected to Base Sepolia`);
+      addClaimLog(`→ Loading ZK proof: ${proofKey}`);
+      addClaimLog(`→ Submitting withdrawToStealth() via server signer…`);
 
-      addClaimLog(`→ Loading pre-generated ZK proof: ${proofKey}`);
-      const res = await fetch(`/api/contracts/proof?key=${encodeURIComponent(proofKey)}`);
-      if (!res.ok) throw new Error((await res.json()).error);
-      const { proofHex, publicInputs } = await res.json();
-
-      const proofBytes = (proofHex.length - 2) / 2;
-      addClaimLog(`✓ Proof loaded (${proofBytes} bytes) — UltraHonk / Barretenberg`);
-      addClaimLog(`  Merkle root:    ${publicInputs.merkleRoot}`);
-      addClaimLog(`  Nullifier hash: ${publicInputs.nullifierHash}`);
-      addClaimLog(`  Amount:         ${Number(publicInputs.amount).toLocaleString()} USDC`);
-
-      const VAULT = process.env.NEXT_PUBLIC_SHIELD_VAULT_ADDRESS as `0x${string}`;
-      addClaimLog(`→ Calling withdrawToStealth() on ShieldVault`);
-      addClaimLog(`  ShieldVault: ${VAULT}`);
-
-      const tx = await writeContractAsync({
-        address: VAULT,
-        abi: SHIELD_VAULT_ABI,
-        functionName: "withdrawToStealth",
-        args: [
-          proofHex as `0x${string}`,
-          publicInputs.merkleRoot as `0x${string}`,
-          publicInputs.nullifierHash as `0x${string}`,
-          publicInputs.stealthAddress as `0x${string}`,
-          BigInt(publicInputs.amount),
-        ],
-        chainId: baseSepolia.id,
+      const res = await fetch("/api/contracts/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: proofKey }),
       });
-      addClaimLog(`  withdrawToStealth() tx: ${tx}`);
-      addClaimLog(`✓ ${Number(publicInputs.amount).toLocaleString()} USDC → stealth address`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      addClaimLog(`✓ Confirmed in block ${data.blockNumber}`);
+      addClaimLog(`  tx: ${data.txHash}`);
+      addClaimLog(`  https://sepolia.basescan.org/tx/${data.txHash}`);
+      addClaimLog(`✓ ${Number(data.amount).toLocaleString()} USDC → stealth address`);
       addClaimLog(`✓ Nullifier recorded — cannot double-claim`);
-      setClaimResult((prev) => ({ ...prev, [proofKey]: tx }));
+      setClaimResult((prev) => ({ ...prev, [proofKey]: data.txHash }));
     } catch (e: unknown) {
       const msg = (e as Error).message;
       setClaimError(msg);

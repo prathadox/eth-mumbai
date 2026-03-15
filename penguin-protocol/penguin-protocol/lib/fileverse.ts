@@ -8,8 +8,7 @@ let _agent: Agent | null = null;
 async function getAgent(): Promise<Agent> {
   if (_agent) return _agent;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const storageProvider = new (PinataStorageProvider as any)({
+  const storageProvider = new PinataStorageProvider({
     pinataJWT: process.env.PINATA_JWT!,
     pinataGateway: process.env.PINATA_GATEWAY!,
   });

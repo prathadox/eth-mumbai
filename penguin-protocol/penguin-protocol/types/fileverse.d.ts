@@ -25,8 +25,8 @@ declare module "@fileverse/agents" {
 
 declare module "@fileverse/agents/storage" {
   export interface PinataConfig {
-    jwt: string;
-    gateway: string;
+    pinataJWT: string;
+    pinataGateway: string;
   }
 
   export class PinataStorageProvider {

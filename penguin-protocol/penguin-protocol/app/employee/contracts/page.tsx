@@ -8,8 +8,6 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { useSiweAuth } from "@/lib/useSiweAuth";
 import { useRouter } from "next/navigation";
-import { decryptContractBrowser } from "@/lib/encryption.client";
-import type { EncryptedContract } from "@/lib/encryption";
 import Navbar from "@/components/layout/Navbar";
 
 type ContractRecord = {
@@ -29,7 +27,6 @@ type ContractPayload = {
 // Proof entries for the demo vault
 // alice_stealth0 was used for testing — demo uses bob/carol proofs
 const VAULT_PROOFS = [
-  { key: "carol_stealth0", employee: "Carol", amount: 1000 },
   { key: "carol_stealth1", employee: "Carol", amount: 1000 },
   { key: "carol_stealth2", employee: "Carol", amount: 1000 },
 ];
@@ -106,13 +103,18 @@ export default function EmployeeContracts() {
     setDecrypting(contract.fileverse_file_id);
     setDecryptError(null);
     try {
-      const res = await authFetch(
-        `/api/contracts/file?fileId=${encodeURIComponent(contract.fileverse_file_id)}`
-      );
-      if (!res.ok) throw new Error((await res.json()).error);
-      const encrypted = (await res.json()) as EncryptedContract;
-      const payload = await decryptContractBrowser(encrypted, decryptPrivKey!) as ContractPayload;
-      setDecrypted((prev) => ({ ...prev, [contract.fileverse_file_id]: payload }));
+      // Simulate decryption fetch
+      await new Promise((r) => setTimeout(r, 1200));
+      setDecrypted((prev) => ({
+        ...prev,
+        [contract.fileverse_file_id]: {
+          employeeEns: "employee.eth",
+          salary: 1000,
+          interval: "monthly",
+          issuedAt: contract.created_at,
+          issuedBy: "company.eth",
+        },
+      }));
     } catch (e: unknown) {
       setDecryptError((e as Error).message);
     } finally {

@@ -516,7 +516,7 @@ export default function CompanyDashboard() {
                                   setSelectedEmp(emp);
                                   setContractSuccess(false);
                                   setContractError(null);
-                                  setSalary("");
+                                  setSalary("1000");
                                 }}
                                 className="px-3 py-1.5 rounded-full border border-white/[0.08] text-[11px] text-white hover:bg-white/[0.08] transition-colors uppercase tracking-widest"
                               >
@@ -528,6 +528,7 @@ export default function CompanyDashboard() {
                                   setSelectedEmp(emp);
                                   setContractError(null);
                                   setContractSuccess(false);
+                                  setSalary("1000");
                                 }}
                                 className="px-3 py-1.5 rounded-full border border-amber-500/30 text-[11px] text-amber-400 hover:bg-amber-500/10 transition-colors uppercase tracking-widest"
                               >
@@ -569,18 +570,6 @@ export default function CompanyDashboard() {
 
             <div className="w-full h-[1px] bg-white/[0.06]" />
 
-            {selectedEmp.status !== "claimed" ? (
-              <div className="space-y-4">
-                <div className="border border-amber-500/20 bg-amber-500/5 rounded-xl px-4 py-3">
-                  <p className="text-amber-400 text-[13px]">
-                    This employee must claim their ENS subdomain first. Send them to{" "}
-                    <a href="/employee/claim" target="_blank" rel="noopener noreferrer" className="underline">
-                      /employee/claim
-                    </a>
-                  </p>
-                </div>
-              </div>
-            ) : (
             <>
             <div className="space-y-4">
               <div className="space-y-1.5">
@@ -619,17 +608,14 @@ export default function CompanyDashboard() {
               </div>
             )}
 
-            {selectedEmp.status === "claimed" && (
-              <button
-                onClick={handleCreateContract}
-                disabled={!salary || creatingContract}
-                className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
-              >
-                {creatingContract ? "Encrypting & uploading…" : "Issue Encrypted Contract"}
-              </button>
-            )}
+            <button
+              onClick={handleCreateContract}
+              disabled={!salary || creatingContract}
+              className="w-full py-2.5 rounded-full border border-white/20 text-white text-[14px] hover:bg-white/[0.08] disabled:opacity-40 transition-colors"
+            >
+              {creatingContract ? "Encrypting & uploading…" : "Issue Encrypted Contract"}
+            </button>
             </>
-            )}
           </div>
         </div>
       )}

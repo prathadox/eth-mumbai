@@ -17,6 +17,15 @@ import { ethers } from "ethers";
 import * as dotenv from "dotenv";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
+
+// Fileverse packages live inside the Next.js app's node_modules
+const appRequire = createRequire(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../penguin-protocol/penguin-protocol/package.json")
+);
+const { Agent }                  = appRequire("@fileverse/agents");
+const { PinataStorageProvider }  = appRequire("@fileverse/agents/storage");
+const { privateKeyToAccount }    = appRequire("viem/accounts");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../penguin-protocol/penguin-protocol/.env.local") });
@@ -150,6 +159,48 @@ async function main() {
     : `✗ Root mismatch — check MiMC constants match circuit`
   );
   console.log("\x1b[1m" + "=".repeat(60) + "\x1b[0m\n");
+
+  log("\n[5/5] Uploading deposit record to Fileverse…");
+  try {
+    const storageProvider = new PinataStorageProvider({
+      pinataJWT: process.env.PINATA_JWT!,
+      pinataGateway: process.env.PINATA_GATEWAY!,
+    });
+    const account = privateKeyToAccount(process.env.SIGNER_PRIVATE_KEY as `0x${string}`);
+    const agent = new Agent({
+      chain: process.env.FILEVERSE_CHAIN as "gnosis" | "sepolia",
+      viemAccount: account,
+      pimlicoAPIKey: process.env.PIMLICO_API_KEY!,
+      storageProvider,
+    });
+    await agent.setupStorage("penguin-protocol");
+
+    const content = `# ShieldVault Deposit Record
+
+**Date:** ${new Date().toISOString()}
+**Network:** Base Sepolia (chainId 84532)
+**ShieldVault:** ${VAULT}
+**Deposit Tx:** ${depositTx.hash}
+**Merkle Root:** ${finalRoot}
+**Total Locked:** ${Number(TOTAL)} USDC
+
+## Commitments
+
+${COMMITMENTS.map((c, i) => {
+  const names = ["Alice stealth0","Bob stealth0","Bob stealth1","Carol stealth0","Carol stealth1","Carol stealth2"];
+  return `- [${i}] **${names[i]}**: \`${c}\` — ${Number(AMOUNTS[i])} USDC`;
+}).join("\n")}
+
+\`\`\`json
+${JSON.stringify({ depositTxHash: depositTx.hash, merkleRoot: finalRoot, vault: VAULT, commitments: COMMITMENTS, amounts: AMOUNTS.map(String), totalUsdc: Number(TOTAL), timestamp: new Date().toISOString() }, null, 2)}
+\`\`\`
+`;
+
+    const file = await agent.create(content);
+    log(`✓ Deposit record stored on Fileverse — fileId: ${file.fileId}`);
+  } catch (e: unknown) {
+    log(`✗ Fileverse upload failed: ${(e as Error).message}`);
+  }
 }
 
 main().catch((e) => { console.error("\x1b[31m[ERROR]\x1b[0m", e.message); process.exit(1); });
